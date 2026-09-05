@@ -69,6 +69,10 @@ apps/mobile/.expo/
 # next.js build output
 .next
 
+# Build outputs
+dist/
+apps/web/dist/
+
 # Doc junks
 docs/~*.docx
 docs/~$*.docx

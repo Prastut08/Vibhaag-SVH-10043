@@ -13,16 +13,25 @@ import {
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { db, auth, googleProvider } from "./firebase";
+import { db, auth } from "./firebase";
 import type { AuthResponse } from "@vibhaag/shared";
 
 // ----------------------------------------------------
-// AUTHENTICATION
+// AUTHENTICATION & API BASE URL RESOLUTION
 // ----------------------------------------------------
+const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== "undefined" && window.location && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
+  return "http://localhost:4000";
+};
+
+export const API_BASE = getApiBaseUrl();
 
 // Role-based Firestore user authentication & collection storage
 export async function loginRoleBased(email: string, password: string, userType: "student" | "faculty" | "admin") {
@@ -30,7 +39,7 @@ export async function loginRoleBased(email: string, password: string, userType: 
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const collectionName = userType === "student" ? "students" : userType === "faculty" ? "faculty" : "admins";
     const userDoc = await getDoc(doc(db, collectionName, cred.user.uid));
-    
+
     let userData: any;
     if (userDoc.exists()) {
       userData = userDoc.data();
@@ -59,70 +68,57 @@ export async function loginRoleBased(email: string, password: string, userType: 
 
 export async function signUpRoleBased(payload: {
   name: string;
-  email: string;
-  password: string;
-  userType: "student" | "faculty" | "admin";
+  email?: string;
+  enrollmentNo?: string;
+  password?: string;
+  userType: "student" | "faculty" | "admin" | "teacher";
   rollNumber?: string;
   department?: string;
   designation?: string;
 }) {
-  const { name, email, password, userType, rollNumber, department, designation } = payload;
+  const normalizedRole: "admin" | "teacher" | "student" =
+    payload.userType === "faculty" ? "teacher" : payload.userType;
+
+  if (payload.userType === "student" || payload.userType === "faculty" || payload.userType === "teacher") {
+    throw new Error(
+      "Self-signup is strictly disabled for students and teachers. User accounts can only be provisioned by an Administrator using an Enrollment Number."
+    );
+  }
+
+  const email =
+    payload.email || (payload.enrollmentNo ? `${payload.enrollmentNo.toLowerCase()}@gmail.com` : "");
+  const password = payload.password || "admin1234";
+
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const collectionName = userType === "student" ? "students" : userType === "faculty" ? "faculty" : "admins";
-    
+    const collectionName = "admins";
+
     const userData = {
       id: cred.user.uid,
-      name,
+      name: payload.name,
       email,
-      role: userType,
-      ...(rollNumber ? { rollNumber } : {}),
-      ...(department ? { department } : {}),
-      ...(designation ? { designation } : {}),
+      role: normalizedRole,
+      ...(payload.enrollmentNo ? { enrollmentNo: payload.enrollmentNo } : {}),
+      ...(payload.rollNumber ? { rollNumber: payload.rollNumber } : {}),
+      ...(payload.department ? { department: payload.department } : {}),
+      ...(payload.designation ? { designation: payload.designation } : {}),
       createdAt: new Date().toISOString(),
     };
 
-    // Store in role-specific Firestore collection (students/faculty/admins)
     await setDoc(doc(db, collectionName, cred.user.uid), userData);
-    // Also store in general users index
     await setDoc(doc(db, "users", cred.user.uid), userData);
 
     const token = await cred.user.getIdToken();
     localStorage.setItem("vibhaag-token", token);
     return userData;
   } catch (e: any) {
-    console.warn("Sign up fallback notice:", e.message);
-    return { id: "user-" + Date.now(), name, email, role: userType };
+    console.warn("Sign up notice:", e.message);
+    return { id: "user-" + Date.now(), name: payload.name, email, role: normalizedRole };
   }
 }
 
-export async function loginWithGoogleRoleBased(userType: "student" | "faculty" | "admin") {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
-    const collectionName = userType === "student" ? "students" : userType === "faculty" ? "faculty" : "admins";
-    const userRef = doc(db, collectionName, user.uid);
-    const userDoc = await getDoc(userRef);
-
-    if (!userDoc.exists()) {
-      const userData = {
-        id: user.uid,
-        name: user.displayName || "Google User",
-        email: user.email,
-        role: userType,
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(userRef, userData);
-      await setDoc(doc(db, "users", user.uid), userData);
-    }
-
-    const token = await user.getIdToken();
-    localStorage.setItem("vibhaag-token", token);
-    return { id: user.uid, name: user.displayName || "Google User", email: user.email || "", role: userType };
-  } catch (error: any) {
-    console.error("Google Auth Error:", error);
-    throw new Error(error.message || "Google sign-in failed");
-  }
+export async function loginWithGoogleRoleBased(_userType: "student" | "faculty" | "admin") {
+  throw new Error("Google login is disabled. Account authorization is managed exclusively by the Administrator.");
 }
 
 export async function login(email: string, password: string) {
@@ -130,7 +126,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function loginWithGoogle() {
-  return loginWithGoogleRoleBased("admin");
+  throw new Error("Google login is disabled. Account authorization is managed exclusively by the Administrator.");
 }
 
 export async function logout() {
@@ -151,20 +147,48 @@ export async function bootstrapAdmin(name: string, email: string, password: stri
 }
 
 export async function fetchMe() {
-  if (auth.currentUser) {
-    const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-    if (userDoc.exists()) {
-      const data = userDoc.data();
-      return { id: auth.currentUser.uid, name: data.name, email: data.email, role: data.role };
-    }
-    return {
-      id: auth.currentUser.uid,
-      name: auth.currentUser.displayName || "User",
-      email: auth.currentUser.email || "",
-      role: "admin",
-    };
+  if (!auth.currentUser) {
+    throw new Error("No active Firebase session");
   }
-  return { id: "admin-uid", name: "Campus Admin", email: "admin@vibhaag.dev", role: "admin" };
+
+  const token = await auth.currentUser.getIdToken(true);
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to verify Campus Hub user profile");
+  }
+
+  return data;
+}
+
+export async function verifyPortalLogin(expectedRole: "admin" | "student" | "teacher", identifier?: string) {
+  if (!auth.currentUser) {
+    throw new Error("No active Firebase session");
+  }
+
+  const token = await auth.currentUser.getIdToken(true);
+  localStorage.setItem("vibhaag-token", token);
+
+  const res = await fetch(`${API_BASE}/auth/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ expectedRole, identifier }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Authentication failed");
+  }
+
+  return data;
 }
 
 // ----------------------------------------------------
@@ -448,10 +472,6 @@ export async function checkOut(attendanceId: string) {
   }
 }
 
-// ----------------------------------------------------
-// FFCS — Fully Flexible Credit System
-// ----------------------------------------------------
-
 export type FfcsConfig = {
   semester: string;
   classrooms: number;
@@ -699,5 +719,238 @@ export async function fetchFfcsConfig(): Promise<FfcsConfig | null> {
   } catch { /* fallback */ }
   return null;
 }
+export async function createStudentAccount(payload: {
+  enrollmentNumber: string;
+  name: string;
+  branch?: string;
+  semester?: string | number;
+  departmentId?: string;
+  batchId?: string;
+}) {
+  try {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : localStorage.getItem("vibhaag-token");
+    const res = await fetch(`${API_BASE}/admin/users/student`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to create student account");
+    }
+    return data;
+  } catch (err: any) {
+    if (err.name === "TypeError" || err.message?.includes("fetch")) {
+      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.");
+    }
+    throw err;
+  }
+}
 
+export async function createTeacherAccount(payload: {
+  teacherIdentifier: string;
+  name: string;
+  department?: string;
+  designation?: string;
+  departmentId?: string;
+}) {
+  try {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : localStorage.getItem("vibhaag-token");
+    const res = await fetch(`${API_BASE}/admin/users/teacher`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to create teacher account");
+    }
+    return data;
+  } catch (err: any) {
+    if (err.name === "TypeError" || err.message?.includes("fetch")) {
+      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.");
+    }
+    throw err;
+  }
+}
 
+// ----------------------------------------------------
+// ADMIN MODULE BACKEND API HELPERS (ZERO TRUST SERVER-SIDE AUTH)
+// ----------------------------------------------------
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken(true) : localStorage.getItem("vibhaag-token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export async function fetchAdminOverview() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/overview`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch admin overview metrics");
+  }
+  return data;
+}
+
+export async function fetchAdminBranches() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch branches");
+  }
+  return data;
+}
+
+export async function createBranch(payload: { name: string; code: string; description?: string }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create branch");
+  }
+  return data;
+}
+
+export async function updateBranch(id: string, payload: { name: string; code: string; description?: string }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update branch");
+  }
+  return data;
+}
+
+export async function deleteBranch(id: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to delete branch");
+  }
+  return data;
+}
+
+export async function fetchAdminStudents() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/students`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch students");
+  }
+  return data;
+}
+
+export async function updateStudent(id: string, payload: { name: string; branch?: string; semester?: string | number }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/students/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update student");
+  }
+  return data;
+}
+
+export async function deleteStudent(id: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/students/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to delete student");
+  }
+  return data;
+}
+
+export async function fetchAdminTeachers() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/teachers`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch teachers");
+  }
+  return data;
+}
+
+export async function updateTeacher(id: string, payload: { name: string; department?: string; designation?: string }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/teachers/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update teacher");
+  }
+  return data;
+}
+
+export async function deleteTeacher(id: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/teachers/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader },
+  });
+}
+export async function toggleUserStatus(uid: string, status: "active" | "inactive") {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/users/${uid}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update account status");
+  }
+  return data;
+}

@@ -1,7 +1,5 @@
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-
-import { config } from "../config";
+import { adminAuth } from "../lib/firebase-admin";
 
 export async function hashPassword(password: string) {
   const salt = await bcrypt.genSalt(10);
@@ -12,6 +10,6 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export function signToken(userId: string, role: string) {
-  return jwt.sign({ sub: userId, role }, config.jwtSecret, { expiresIn: "7d" });
+export async function createCustomToken(uid: string, claims?: Record<string, unknown>) {
+  return adminAuth.createCustomToken(uid, claims);
 }

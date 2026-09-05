@@ -1,7 +1,10 @@
-import mongoose from "mongoose";
-import { config } from "./config";
+import { adminDb } from "./lib/firebase-admin";
 
-export async function connectDb() {
-  if (mongoose.connection.readyState >= 1) return;
-  return mongoose.connect(config.mongoUrl);
+/**
+ * Ensures Firebase Admin and Firestore connection is established.
+ */
+export async function connectDb(): Promise<void> {
+  // Simple check to verify Firestore is reachable on startup
+  await adminDb.listCollections();
 }
+
