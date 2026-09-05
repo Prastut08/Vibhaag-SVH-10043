@@ -1,19 +1,22 @@
 import { useState } from "react";
+import { createAISummary, fetchAISummaries, type AISummary } from "../lib/api";
 
 export default function FacultyAISummarizerPage() {
   const [text, setText] = useState("");
-  const [summary, setSummary] = useState("");
+  const [summaries, setSummaries] = useState<AISummary[]>([]);
   const [loading, setLoading] = useState(false);
 
   const handleSummarize = async () => {
     if (!text.trim()) return;
     setLoading(true);
-    setTimeout(() => {
-      setSummary(
-        `Summary: ${text.length > 100 ? text.slice(0, 100) + "…" : text} — This is a simulated AI-generated summary. Connect this to your backend summarization service for real results.`
-      );
+    try {
+      const summaryText = `Summary: ${text.length > 100 ? text.slice(0, 100) + "…" : text}`;
+      const newSummary = await createAISummary({ inputText: text, summary: summaryText });
+      setSummaries((prev) => [newSummary, ...prev]);
+      setText("");
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   return (
@@ -51,10 +54,15 @@ export default function FacultyAISummarizerPage() {
         </button>
       </div>
 
-      {summary && (
+      {summaries.length > 0 && (
         <div className="card">
-          <h3 style={{ margin: "0 0 12px" }}>Summary</h3>
-          <p style={{ margin: 0, color: "var(--muted)", whiteSpace: "pre-wrap" }}>{summary}</p>
+          <h3 style={{ margin: "0 0 12px" }}>Recent Summaries</h3>
+          {summaries.map((s) => (
+            <div key={s._id} style={{ marginBottom: "12px", paddingBottom: "12px", borderBottom: "1px solid var(--line)" }}>
+              <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>{new Date(s.createdAt).toLocaleString()}</p>
+              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{s.summary}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -1,27 +1,31 @@
 import { useEffect, useState } from "react";
-
-type AcademicEvent = {
-  _id: string;
-  title: string;
-  date: string;
-  description: string;
-};
+import { fetchAcademicEvents, createAcademicEvent, type AcademicEvent } from "../lib/api";
 
 export default function FacultyAcademicEventsPage() {
   const [events, setEvents] = useState<AcademicEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
-    setTimeout(() => {
-      setEvents([
-        { _id: "1", title: "Mid-term Examinations", date: "2026-10-15", description: "Mid-term exams for all departments." },
-        { _id: "2", title: "Faculty Development Workshop", date: "2026-10-20", description: "Workshop on modern teaching methodologies." },
-        { _id: "3", title: "Annual Sports Day", date: "2026-11-05", description: "Inter-department sports competitions." },
-        { _id: "4", title: "Research Paper Submission", date: "2026-11-15", description: "Deadline for research paper submissions." },
-      ]);
-      setLoading(false);
-    }, 500);
+    fetchAcademicEvents()
+      .then(setEvents)
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false));
   }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !date) return;
+    const newEvent = await createAcademicEvent({ title, date, description });
+    setEvents((prev) => [newEvent, ...prev]);
+    setTitle("");
+    setDate("");
+    setDescription("");
+    setShowForm(false);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -35,7 +39,35 @@ export default function FacultyAcademicEventsPage() {
             Stay updated with upcoming academic events and deadlines.
           </p>
         </div>
+        <button className="button" onClick={() => setShowForm((prev) => !prev)}>
+          {showForm ? "Close" : "Add Event"}
+        </button>
       </div>
+
+      {showForm && (
+        <div className="card">
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label className="input">
+              Event Title
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            </label>
+            <label className="input">
+              Date
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            </label>
+            <label className="input">
+              Description
+              <textarea
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+              />
+            </label>
+            <button className="button" type="submit">Save Event</button>
+          </form>
+        </div>
+      )}
 
       {loading && (
         <div className="card" style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
