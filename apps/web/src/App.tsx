@@ -19,6 +19,7 @@ import {
   MessageSquare,
   School,
   FileText,
+  Video,
 } from "lucide-react";
 
 import { onAuthStateChanged } from "firebase/auth";
@@ -39,6 +40,7 @@ import PeoplePage from "./pages/PeoplePage";
 import SessionsPage from "./pages/SessionsPage";
 import StudentAnnouncementsPage from "./pages/StudentAnnouncementsPage";
 import StudentAttendancePage from "./pages/StudentAttendancePage";
+import StudentClassroomPage from "./pages/StudentClassroomPage";
 import StudentFeedbackPage from "./pages/StudentFeedbackPage";
 import StudentHomePage from "./pages/StudentHomePage";
 import StudentLeavePage from "./pages/StudentLeavePage";
@@ -95,18 +97,19 @@ const studentNavItems = [
   { to: "/student/dashboard", label: "My Hub", icon: BarChart3 },
   { to: "/student/schedule", label: "Schedule", icon: CalendarDays },
   { to: "/student/attendance", label: "My Attendance", icon: ShieldCheck },
+  { to: "/student/classroom", label: "Classroom", icon: Video },
   { to: "/student/announcements", label: "Announcements", icon: Layers },
   { to: "/student/leave", label: "Leave Requests", icon: Users },
   { to: "/student/feedback", label: "Session Feedback", icon: Megaphone },
   { to: "/student/library", label: "Library", icon: Library },
-  { to: "/student/ffcs", label: "FFCS", icon: Grid }
+  { to: "/student/ffcs", label: "FFCS", icon: Grid },
 ];
 
 function PortalSelectionPage() {
   const navigate = useNavigate();
   return (
     <div className="login-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "20px" }}>
-      <div style={{ textTransform: "uppercase", tracking: "2px", fontSize: "12px", fontWeight: 700, color: "#6366f1", marginBottom: "8px" }}>
+      <div style={{ textTransform: "uppercase", letterSpacing: "2px", fontSize: "12px", fontWeight: 700, color: "#6366f1", marginBottom: "8px" }}>
         Vibhaag Portal
       </div>
       <h1 style={{ fontSize: "32px", fontWeight: 800, marginBottom: "12px", color: "#111827" }}>
@@ -273,7 +276,7 @@ function MainApp() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                className={(props) => `nav-link${props.isActive ? " active" : ""}`}
               >
                 <item.icon size={18} />
                 {item.label}
@@ -289,9 +292,11 @@ function MainApp() {
             <Route path="/student/dashboard" element={<StudentHomePage />} />
             <Route path="/student/schedule" element={<StudentSchedulePage />} />
             <Route path="/student/attendance" element={<StudentAttendancePage />} />
+            <Route path="/student/classroom" element={<StudentClassroomPage />} />
             <Route path="/student/announcements" element={<StudentAnnouncementsPage />} />
             <Route path="/student/leave" element={<StudentLeavePage />} />
             <Route path="/student/feedback" element={<StudentFeedbackPage />} />
+            <Route path="/student/library" element={<StudentLibraryPage />} />
             <Route path="/student/ffcs" element={<FfcsStudentPage />} />
             <Route path="/" element={<Navigate to="/student/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
@@ -319,7 +324,7 @@ function MainApp() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                className={(props) => `nav-link${props.isActive ? " active" : ""}`}
               >
                 <item.icon size={18} />
                 {item.label}
@@ -368,7 +373,7 @@ function MainApp() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                className={(props) => `nav-link${props.isActive ? " active" : ""}`}
               >
                 <item.icon size={18} />
                 {item.label}

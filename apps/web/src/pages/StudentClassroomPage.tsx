@@ -1,22 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Camera,
-  CameraOff,
-  Check,
-  Copy,
   Download,
-  Mic,
-  MicOff,
-  MonitorUp,
   MessageSquare,
   PhoneOff,
   Play,
-  Plus,
   Radio,
   ShieldCheck,
   Video as VideoIcon,
   X,
+  Search,
+  Mic,
+  MicOff,
   Disc,
+  MonitorUp,
 } from "lucide-react";
 import {
   Call,
@@ -32,8 +28,6 @@ import {
 import "@stream-io/video-react-sdk/dist/css/styles.css";
 
 import {
-  createClassroomMeeting,
-  endClassroomMeeting,
   fetchClassroomRecordings,
   getStreamVideoClient,
   saveClassroomRecording,
@@ -56,8 +50,7 @@ function blobToDataURL(blob: Blob): Promise<string> {
   });
 }
 
-// Real WebRTC Stream Grid & Screen Share Layout
-function RealStreamVideoGrid() {
+function StudentStreamVideoGrid() {
   const { useParticipants } = useCallStateHooks();
   const participants = useParticipants();
   const hasScreenShare = participants.some((p) => p.isScreenSharing);
@@ -65,7 +58,7 @@ function RealStreamVideoGrid() {
   if (participants.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: "60px", color: "#94a3b8" }}>
-        ⌛ Initializing WebRTC Media Connection...
+        ⌛ Connecting to real WebRTC session...
       </div>
     );
   }
@@ -122,7 +115,7 @@ function RealStreamVideoGrid() {
             }}
           >
             <span>
-              {participant.name || participant.userId} {participant.isLocalParticipant ? "(Host / You)" : ""}
+              {participant.name || participant.userId} {participant.isLocalParticipant ? "(You)" : ""}
             </span>
             {participant.isMicrophoneEnabled ? <Mic size={14} color="#10b981" /> : <MicOff size={14} color="#ef4444" />}
           </div>
@@ -132,7 +125,7 @@ function RealStreamVideoGrid() {
   );
 }
 
-function RealStreamChatDrawer({
+function StudentStreamChatDrawer({
   callId,
   chatMessages,
   onClose,
@@ -150,8 +143,8 @@ function RealStreamChatDrawer({
     setMessageInput("");
     await sendClassroomMessage({
       callId,
-      sender: "Faculty Host",
-      role: "Faculty",
+      sender: "Student Participant",
+      role: "Student",
       text,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     });
@@ -199,7 +192,7 @@ function RealStreamChatDrawer({
       <form onSubmit={handleSendMessage} style={{ padding: "12px", borderTop: "1px solid #334155", display: "flex", gap: "8px" }}>
         <input
           type="text"
-          placeholder="Send message to room..."
+          placeholder="Ask a question..."
           value={messageInput}
           onChange={(e) => setMessageInput(e.target.value)}
           style={{
@@ -212,7 +205,7 @@ function RealStreamChatDrawer({
             fontSize: "13px",
           }}
         />
-        <button type="submit" style={{ background: "#4f46e5", color: "#fff", border: "none", borderRadius: "6px", padding: "8px 12px", cursor: "pointer" }}>
+        <button type="submit" style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", padding: "8px 12px", cursor: "pointer" }}>
           Send
         </button>
       </form>
@@ -220,25 +213,20 @@ function RealStreamChatDrawer({
   );
 }
 
-export default function FacultyClassroomPage() {
+export default function StudentClassroomPage() {
   const [meetings, setMeetings] = useState<ClassroomMeeting[]>([]);
   const [recordings, setRecordings] = useState<ClassroomRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCall, setActiveCall] = useState<ClassroomMeeting | null>(null);
+  const [joinCodeInput, setJoinCodeInput] = useState("");
 
   // GetStream SDK instances
   const [client, setClient] = useState<StreamVideoClient | null>(null);
   const [call, setCall] = useState<Call | null>(null);
 
-  // Form modal
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [title, setTitle] = useState("");
-  const [course, setCourse] = useState("CS101");
-  const [batch, setBatch] = useState("2024-CSE-A");
-
-  // Call Controls State
+  // Controls
   const [showChat, setShowChat] = useState(true);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ClassroomChatMessage[]>([]);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   // Recording State
@@ -252,13 +240,34 @@ export default function FacultyClassroomPage() {
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
 
-  // Chat messages
-  const [chatMessages, setChatMessages] = useState<ClassroomChatMessage[]>([]);
-
   useEffect(() => {
     const unsubscribeMeetings = subscribeToClassroomMeetings((list) => {
-      setMeetings(list);
+      const liveList = list.filter((m) => m.status === "live");
+      setMeetings(liveList);
       setLoading(false);
+
+      // Auto join via URL search param ?callId=...
+      const urlParams = new URLSearchParams(window.location.search);
+      const callIdFromUrl = urlParams.get("callId");
+      if (callIdFromUrl && !activeCall) {
+        const matched = liveList.find((m) => m.callId.toLowerCase() === callIdFromUrl.toLowerCase());
+        if (matched) {
+          handleJoinMeeting(matched);
+        } else {
+          handleJoinMeeting({
+            id: `url-${Date.now()}`,
+            callId: callIdFromUrl,
+            title: `Live Lecture Room (${callIdFromUrl})`,
+            course: "CS101",
+            batch: "2024-CSE",
+            hostName: "Faculty Host",
+            hostRole: "Faculty",
+            status: "live",
+            createdAt: new Date().toISOString(),
+            participantsCount: 1,
+          });
+        }
+      }
     });
 
     const unsubscribeRecordings = subscribeToClassroomRecordings((list) => {
@@ -286,13 +295,14 @@ export default function FacultyClassroomPage() {
     setRecordings(list);
   }
 
-  async function handleStartMeeting(meeting: ClassroomMeeting) {
+  async function handleJoinMeeting(meeting: ClassroomMeeting) {
     setActiveCall(meeting);
     try {
-      const uniqueFacultyId = `fac_${Date.now().toString().slice(-4)}_${Math.random().toString(36).substring(2, 6)}`;
+      // Unique student ID for multi-browser support
+      const uniqueStudentId = `std_${Date.now().toString().slice(-4)}_${Math.random().toString(36).substring(2, 6)}`;
       const streamClient = await getStreamVideoClient({
-        id: uniqueFacultyId,
-        name: "Dr. Ramesh Kumar (Faculty)",
+        id: uniqueStudentId,
+        name: "Student Participant",
       });
       setClient(streamClient);
 
@@ -314,19 +324,37 @@ export default function FacultyClassroomPage() {
     }
   }
 
-  async function handleCreateNewClass() {
-    if (!title.trim()) return;
-    const meeting = await createClassroomMeeting({
-      callId: `room-${course.toLowerCase()}-${Date.now().toString().slice(-4)}`,
-      title: title.trim(),
-      course,
-      batch,
-      hostName: "Dr. Ramesh Kumar",
-      hostRole: "Faculty",
-    });
-    setShowCreateModal(false);
-    setTitle("");
-    handleStartMeeting(meeting);
+  function handleJoinWithCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!joinCodeInput.trim()) return;
+    const inputStr = joinCodeInput.trim();
+    let code = inputStr;
+    try {
+      if (inputStr.includes("callId=")) {
+        const parsed = new URL(inputStr);
+        code = parsed.searchParams.get("callId") || inputStr;
+      }
+    } catch {
+      /* ignore URL parse error */
+    }
+
+    const match = meetings.find((m) => m.callId.toLowerCase() === code.toLowerCase());
+    if (match) {
+      handleJoinMeeting(match);
+    } else {
+      handleJoinMeeting({
+        id: `custom-${Date.now()}`,
+        callId: code,
+        title: `Live Lecture Room (${code})`,
+        course: "CS101",
+        batch: "2024-CSE",
+        hostName: "Faculty Member",
+        hostRole: "Faculty",
+        status: "live",
+        createdAt: new Date().toISOString(),
+        participantsCount: 1,
+      });
+    }
   }
 
   async function toggleScreenShare() {
@@ -420,7 +448,7 @@ export default function FacultyClassroomPage() {
         callId: activeCall.callId,
         title: activeCall.title,
         course: activeCall.course,
-        hostName: "Dr. Ramesh Kumar (Faculty)",
+        hostName: "Student Recording",
         recordedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }),
         duration: durationText,
         videoUrl: blobUrl,
@@ -437,15 +465,6 @@ export default function FacultyClassroomPage() {
     return `${mins}:${s}`;
   }
 
-  function copyShareableLink() {
-    if (activeCall) {
-      const fullUrl = `${window.location.origin}/classroom?callId=${activeCall.callId}`;
-      navigator.clipboard.writeText(fullUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    }
-  }
-
   async function handleLeaveCall() {
     if (isRecording) {
       await stopRecording();
@@ -457,9 +476,6 @@ export default function FacultyClassroomPage() {
     if (client) {
       await client.disconnectUser();
       setClient(null);
-    }
-    if (activeCall) {
-      await endClassroomMeeting(activeCall.id);
     }
     setActiveCall(null);
   }
@@ -478,7 +494,6 @@ export default function FacultyClassroomPage() {
                 background: "#0f172a",
                 borderRadius: "16px",
                 overflow: "hidden",
-                position: "relative",
               }}
             >
               {/* Header */}
@@ -494,9 +509,9 @@ export default function FacultyClassroomPage() {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: "6px", background: "#ef4444", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 600 }}>
-                    <Radio size={14} className="pulse" /> LIVE MEETING
+                    <Radio size={14} className="pulse" /> LIVE CLASS
                   </span>
-                  <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>{activeCall.title}</h3>
+                  <h3 style={{ margin: 0, fontSize: "18px", color: "#fff" }}>{activeCall.title}</h3>
 
                   {isRecording && (
                     <span style={{ display: "flex", alignItems: "center", gap: "6px", background: "#b91c1c", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 700 }}>
@@ -505,40 +520,18 @@ export default function FacultyClassroomPage() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#0f172a", padding: "6px 12px", borderRadius: "8px", border: "1px solid #334155", fontSize: "13px" }}>
-                    <ShieldCheck size={16} color="#10b981" />
-                    <span>GetStream SFU Connected</span>
-                  </div>
-
-                  <button
-                    onClick={copyShareableLink}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      background: "#4f46e5",
-                      color: "#fff",
-                      border: "none",
-                      padding: "8px 14px",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {copiedLink ? <Check size={14} /> : <Copy size={14} />}
-                    {copiedLink ? "Link Copied!" : "Copy Shareable Student Link"}
-                  </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "13px" }}>
+                  <ShieldCheck size={16} color="#10b981" />
+                  <span>GetStream SFU Session</span>
                 </div>
               </div>
 
-              {/* Video Grid & Chat */}
+              {/* Stage & Chat */}
               <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                <RealStreamVideoGrid />
+                <StudentStreamVideoGrid />
 
                 {showChat && (
-                  <RealStreamChatDrawer
+                  <StudentStreamChatDrawer
                     callId={activeCall.callId}
                     chatMessages={chatMessages}
                     onClose={() => setShowChat(false)}
@@ -546,7 +539,7 @@ export default function FacultyClassroomPage() {
                 )}
               </div>
 
-              {/* Controls Dock */}
+              {/* Control Dock */}
               <div
                 style={{
                   padding: "16px 24px",
@@ -606,7 +599,7 @@ export default function FacultyClassroomPage() {
                     height: "40px",
                     borderRadius: "50%",
                     border: "none",
-                    background: showChat ? "#4f46e5" : "#334155",
+                    background: showChat ? "#2563eb" : "#334155",
                     color: "#fff",
                     display: "flex",
                     alignItems: "center",
@@ -637,7 +630,7 @@ export default function FacultyClassroomPage() {
                     marginLeft: "12px",
                   }}
                 >
-                  <PhoneOff size={18} /> End Class
+                  <PhoneOff size={18} /> Leave Class
                 </button>
               </div>
             </div>
@@ -647,78 +640,73 @@ export default function FacultyClassroomPage() {
     );
   }
 
-  // ── FACULTY DASHBOARD VIEW ──
+  // ── STUDENT DASHBOARD VIEW ──
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div className="hero" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-            <span style={{ fontSize: "28px" }}>📹</span>
-            <h2 style={{ margin: 0 }}>Faculty Classroom & Live Meetings</h2>
+            <span style={{ fontSize: "28px" }}>🏫</span>
+            <h2 style={{ margin: 0 }}>Live Video Classroom</h2>
           </div>
           <p style={{ margin: 0, color: "var(--muted)" }}>
-            Conduct real multi-device video meetings, share screens, and record live lectures.
+            Join real-time video lectures across multiple devices or paste join links.
           </p>
         </div>
-
-        <button className="button" onClick={() => setShowCreateModal(true)} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px 20px" }}>
-          <Plus size={18} /> Start Instant Class
-        </button>
       </div>
 
-      {/* Engine Banner */}
-      <div className="card" style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(255, 255, 255, 0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <VideoIcon size={24} color="#818cf8" />
-          </div>
-          <div>
-            <div style={{ fontSize: "16px", fontWeight: 600 }}>GetStream WebRTC Engine • Multi-Device Calling</div>
-            <div style={{ fontSize: "13px", color: "#c7d2fe", marginTop: "2px" }}>
-              Real Video, Microphone Audio & Screen Sharing
-            </div>
-          </div>
-        </div>
-        <span style={{ background: "#10b981", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 700 }}>
-          READY
-        </span>
+      {/* Join Box */}
+      <div className="card" style={{ padding: "20px 24px" }}>
+        <h4 style={{ margin: "0 0 12px" }}>Join Class with Room Link or Code</h4>
+        <form onSubmit={handleJoinWithCode} style={{ display: "flex", gap: "12px", maxWidth: "560px" }}>
+          <input
+            type="text"
+            placeholder="Paste Join Link or enter Room Code (e.g. room-cs101-1234)"
+            value={joinCodeInput}
+            onChange={(e) => setJoinCodeInput(e.target.value)}
+            style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border)" }}
+          />
+          <button type="submit" className="button" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Search size={16} /> Join Class
+          </button>
+        </form>
       </div>
 
-      {/* Meetings Grid */}
-      <h3 style={{ margin: "12px 0 0" }}>Live & Scheduled Classes</h3>
+      {/* Live Feed */}
+      <h3 style={{ margin: "8px 0 0" }}>Active Live Classes</h3>
 
       {loading ? (
         <div className="card" style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-          ⏳ Syncing classroom feeds...
+          ⏳ Listening for live faculty meetings...
         </div>
       ) : meetings.length === 0 ? (
         <div className="card" style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-          No active meetings. Click <strong>Start Instant Class</strong> to host a session.
+          No live classes currently running. Once a teacher starts a class, it will appear here in real time.
         </div>
       ) : (
         <div className="grid">
           {meetings.map((meeting) => (
-            <div key={meeting.id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", borderLeft: meeting.status === "live" ? "4px solid #ef4444" : "4px solid #6366f1" }}>
+            <div key={meeting.id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                  <span style={{ background: meeting.status === "live" ? "#fee2e2" : "#e0e7ff", color: meeting.status === "live" ? "#dc2626" : "#4338ca", padding: "4px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
-                    {meeting.status === "live" ? <Radio size={12} className="pulse" /> : null}
-                    {meeting.status.toUpperCase()}
+                  <span style={{ background: "#fee2e2", color: "#dc2626", padding: "4px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                    <Radio size={12} className="pulse" /> LIVE NOW
                   </span>
                   <span style={{ fontSize: "12px", color: "var(--muted)" }}>Code: {meeting.callId}</span>
                 </div>
 
                 <h4 style={{ margin: "0 0 6px" }}>{meeting.title}</h4>
-                <div style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "12px" }}>
-                  Course: <strong>{meeting.course}</strong> | Batch: <strong>{meeting.batch}</strong>
+                <div style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "8px" }}>
+                  Faculty: <strong>{meeting.hostName}</strong>
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+                  Course: {meeting.course} | Batch: {meeting.batch}
                 </div>
               </div>
 
-              <div style={{ marginTop: "20px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-                <button className="button" onClick={() => handleStartMeeting(meeting)} style={{ width: "100%", background: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-                  <VideoIcon size={16} /> Host / Enter Class
-                </button>
-              </div>
+              <button className="button" onClick={() => handleJoinMeeting(meeting)} style={{ width: "100%", marginTop: "20px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                <VideoIcon size={16} /> Join Live Lecture
+              </button>
             </div>
           ))}
         </div>
@@ -728,7 +716,7 @@ export default function FacultyClassroomPage() {
       <h3 style={{ margin: "24px 0 0" }}>🎥 Recorded Class Lectures</h3>
       {recordings.length === 0 ? (
         <div className="card" style={{ textAlign: "center", padding: "30px", color: "var(--muted)" }}>
-          No recorded lectures saved yet. Click <strong>Record Meeting</strong> inside an active meeting to capture video.
+          No recorded lectures available yet.
         </div>
       ) : (
         <div className="grid">
@@ -752,7 +740,7 @@ export default function FacultyClassroomPage() {
                   }}
                   style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "8px" }}
                 >
-                  <Play size={14} /> Watch Recording
+                  <Play size={14} /> Watch Lecture
                 </button>
                 <a href={rec.videoUrl} download={`${rec.title}.webm`} target="_blank" rel="noreferrer" className="button secondary" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 12px" }}>
                   <Download size={14} />
@@ -774,53 +762,6 @@ export default function FacultyClassroomPage() {
               </button>
             </div>
             <video controls autoPlay style={{ width: "100%", borderRadius: "8px", maxHeight: "400px" }} src={previewVideoUrl} />
-          </div>
-        </div>
-      )}
-
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div className="card fade-in" style={{ width: "460px", padding: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0 }}>Start New Live Class</h3>
-              <button onClick={() => setShowCreateModal(false)} style={{ background: "none", border: "none", cursor: "pointer" }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Lecture Topic</label>
-                <input
-                  type="text"
-                  placeholder="e.g. CS101: WebRTC Video Communication Architecture"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Course</label>
-                  <select value={course} onChange={(e) => setCourse(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)" }}>
-                    <option value="CS101">CS101 Data Structures</option>
-                    <option value="CS202">CS202 Web Development</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Batch</label>
-                  <select value={batch} onChange={(e) => setBatch(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)" }}>
-                    <option value="2024-CSE-A">2024-CSE-A</option>
-                  </select>
-                </div>
-              </div>
-
-              <button className="button" onClick={handleCreateNewClass} disabled={!title.trim()} style={{ width: "100%", padding: "12px", marginTop: "8px" }}>
-                Launch Live Meeting
-              </button>
-            </div>
           </div>
         </div>
       )}
