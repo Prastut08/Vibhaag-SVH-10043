@@ -32,6 +32,7 @@ import StudentFeedbackPage from "./pages/StudentFeedbackPage";
 import StudentHomePage from "./pages/StudentHomePage";
 import StudentLeavePage from "./pages/StudentLeavePage";
 import StudentSchedulePage from "./pages/StudentSchedulePage";
+import StudentLibraryPage from "./pages/StudentLibraryPage";
 import FacultyLeavePage from "./pages/FacultyLeavePage";
 import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
@@ -70,6 +71,7 @@ const studentNavItems = [
   { to: "/announcements", label: "Announcements", icon: Layers },
   { to: "/leave", label: "Leave Requests", icon: Users },
   { to: "/feedback", label: "Session Feedback", icon: Megaphone },
+  { to: "/library", label: "Library", icon: Library },
   { to: "/ffcs", label: "FFCS", icon: Grid },
 ];
 
@@ -447,6 +449,7 @@ export default function App() {
             <Route path="/announcements" element={<StudentAnnouncementsPage />} />
             <Route path="/leave" element={<StudentLeavePage />} />
             <Route path="/feedback" element={<StudentFeedbackPage />} />
+            <Route path="/library" element={<StudentLibraryPage userRole={user.role} userName={user.name} />} />
             <Route path="/ffcs" element={<FfcsStudentPage />} />
           </Routes>
         </AppShell>
@@ -471,7 +474,7 @@ export default function App() {
             <Route path="/ffcs" element={<FfcsFacultyPage />} />
             <Route path="/faculty/leave" element={<FacultyLeavePage />} />
             <Route path="/faculty/classroom" element={<FacultyClassroomPage />} />
-            <Route path="/faculty/library" element={<FacultyLibraryPage />} />
+            <Route path="/faculty/library" element={<FacultyLibraryPage userRole={user.role} userName={user.name} />} />
             <Route path="/faculty/ai-summarizer" element={<FacultyAISummarizerPage />} />
             <Route path="/faculty/events" element={<FacultyAcademicEventsPage />} />
           </Routes>
@@ -495,6 +498,7 @@ export default function App() {
           <Route path="/people" element={<PeoplePage />} />
           <Route path="/engagement" element={<AdminEngagementPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/library" element={<FacultyLibraryPage userRole={user.role} userName={user.name} />} />
           <Route path="/ffcs" element={<FfcsAdminPage />} />
         </Routes>
       </AppShell>
