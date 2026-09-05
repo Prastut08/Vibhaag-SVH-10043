@@ -159,6 +159,218 @@ input {
   font-weight: 600;
 }
 
+.academic-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.registration-panel {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.academic-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.academic-heading h3,
+.academic-card-title h3 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  text-transform: capitalize;
+}
+
+.eyebrow {
+  color: var(--accent-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.semester-tag,
+.spotlight-count {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f5dfce;
+  color: #8a3d22;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.registration-table-wrap {
+  max-height: 410px;
+  overflow: auto;
+}
+
+.registration-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.registration-table th,
+.registration-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.registration-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4e9dc;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.registration-table td:first-child {
+  width: 38px;
+  color: var(--muted);
+}
+
+.registration-table td:nth-child(2) {
+  min-width: 250px;
+}
+
+.registration-table td:nth-child(2) span {
+  margin-left: 9px;
+}
+
+.registration-table em {
+  color: #2671b8;
+  font-weight: 700;
+}
+
+.attendance-value,
+.remark {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.attendance-value.good,
+.remark.good {
+  color: #20835a;
+}
+
+.attendance-value.critical,
+.remark.critical {
+  color: #d44848;
+}
+
+.attendance-value.steady,
+.remark.steady {
+  color: #2671b8;
+}
+
+.academic-aside {
+  display: grid;
+  gap: 20px;
+}
+
+.academic-card {
+  padding: 20px;
+}
+
+.academic-card-title {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.proctor-message {
+  line-height: 1.6;
+}
+
+.proctor-name {
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.credit-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.credit-list div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.credit-list div:last-child {
+  border-bottom: none;
+}
+
+.credit-list dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.credit-list dd {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.credit-list .highlight dd {
+  color: var(--accent-2);
+}
+
+.spotlight {
+  padding: 0;
+  overflow: hidden;
+}
+
+.spotlight-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+}
+
+.spotlight-item > div {
+  flex: 1;
+}
+
+.spotlight-item strong {
+  font-size: 15px;
+}
+
+.spotlight-item p {
+  margin-top: 5px;
+}
+
+.spotlight-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f5dfce;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 700;
+}
+
 .section-title {
   display: flex;
   align-items: center;
@@ -342,6 +554,9 @@ input {
   .nav-link {
     white-space: nowrap;
   }
+  .academic-dashboard {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 600px) {
@@ -368,6 +583,19 @@ input {
   .hero {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .academic-heading,
+  .spotlight-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .semester-tag,
+  .spotlight-count {
+    align-self: flex-start;
+  }
+  .registration-table-wrap {
+    max-height: none;
+    overflow: visible;
   }
 }
 
