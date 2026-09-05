@@ -64,14 +64,16 @@ export default function TeacherLoginPage({ onAuthSuccess }: TeacherLoginPageProp
   }
 
   return (
-    <div className="login-shell">
-      <div className="login-card fade-in" style={{ maxWidth: "420px", width: "100%", padding: "32px" }}>
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "800", color: "#111827", marginBottom: "6px" }}>
-            Campus Hub
-          </h1>
-          <p style={{ fontSize: "16px", fontWeight: "600", color: "#059669" }}>Teacher Login</p>
-        </div>
+    <div className="admin-login-screen">
+      <section className="admin-login-visual" aria-label="Vibhaag campus and students">
+        <div className="campus-artwork"><img src="/loginFirstPage.jpeg" alt="Vibhaag campus and students" /></div>
+      </section>
+      <section className="admin-login-panel">
+        <div className="login-card fade-in reference-login-card">
+          <div className="reference-login-heading">
+            <h1>Welcome back</h1>
+            <p>Vibhaag Faculty Login</p>
+          </div>
 
         {error && (
           <div
@@ -90,9 +92,9 @@ export default function TeacherLoginPage({ onAuthSuccess }: TeacherLoginPageProp
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <label className="input" style={{ marginBottom: "16px", display: "block" }}>
-            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "14px" }}>
+        <form onSubmit={handleSubmit} className="reference-login-form">
+          <label className="input">
+            <span>
               Teacher ID
             </span>
             <input
@@ -101,12 +103,11 @@ export default function TeacherLoginPage({ onAuthSuccess }: TeacherLoginPageProp
               value={teacherId}
               onChange={(e) => setTeacherId(e.target.value)}
               required
-              style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #d1d5db" }}
             />
           </label>
 
-          <label className="input" style={{ marginBottom: "24px", display: "block" }}>
-            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "14px" }}>
+          <label className="input">
+            <span>
               Password
             </span>
             <input
@@ -115,29 +116,15 @@ export default function TeacherLoginPage({ onAuthSuccess }: TeacherLoginPageProp
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #d1d5db" }}
             />
           </label>
 
-          <button
-            type="submit"
-            className="button"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "12px",
-              background: "#059669",
-              color: "#ffffff",
-              fontWeight: 600,
-              borderRadius: "6px",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
+          <button type="submit" className="button reference-login-button" disabled={loading}>
             {loading ? "Authenticating..." : "Login"}
           </button>
         </form>
       </div>
+      </section>
     </div>
   );
 }
