@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper functions
     function signedIn() {
       return request.auth != null;
     }
@@ -17,7 +18,7 @@ service cloud.firestore {
       );
     }
 
-    // Admins profile collection
+    // Admins profile collection (Read only by signed-in users, Writes MUST go through Backend Admin SDK)
     match /admins/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow write: if false;
@@ -45,95 +46,6 @@ service cloud.firestore {
     match /branches/{branchId} {
       allow read: if signedIn();
       allow write: if false;
-    }
-
-    // Faculty/Student shared services
-    match /library-materials/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /library-books/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /classrooms/{docId} {
-      allow read: if signedIn();
-      allow write: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /academic-events/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /ai-summaries/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /leave-requests/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn();
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /feedback/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn();
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /departments/{docId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-
-    match /batches/{docId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-
-    match /courses/{docId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-
-    match /sessions/{docId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-
-    match /attendance/{docId} {
-      allow read: if signedIn();
-      allow write: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff') || hasRole('student'));
-    }
-
-    match /announcements/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-      allow update, delete: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /ffcs-timetable/{docId} {
-      allow read: if signedIn();
-      allow write: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /ffcs-configs/{docId} {
-      allow read: if signedIn();
-      allow write: if signedIn() && (hasRole('admin') || hasRole('teacher') || hasRole('faculty') || hasRole('staff'));
-    }
-
-    match /ffcs-registrations/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn();
-      allow delete: if signedIn();
     }
 
     // Default DENY rule

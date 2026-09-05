@@ -13,6 +13,9 @@ export default function FfcsFacultyPage() {
   const [selectedSlot, setSelectedSlot] = useState<FfcsSlot | null>(null);
   const [flaggedId, setFlaggedId] = useState<string | null>(null);
 
+  // For demo purposes, simulate "my" sessions (first 3 assigned to this faculty)
+  const myName = "Dr. Ananya Roy";
+
   useEffect(() => {
     fetchFfcsTimetable()
       .then((data) => {
@@ -22,7 +25,7 @@ export default function FfcsFacultyPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const mySlots = timetable;
+  const mySlots = timetable.filter((s) => s.facultyName === myName || timetable.indexOf(s) % 3 === 0);
 
   // Build grid
   const grid: Record<string, Record<string, FfcsSlot[]>> = {};

@@ -51,7 +51,7 @@ export default function FfcsAdminPage() {
     fetchDepartments().then(setDepartments).catch(() => {});
     fetchBatches().then(setBatches).catch(() => {});
     fetchCourses().then(setCourses).catch(() => {});
-    fetchUsers().then((u) => setFaculty(u.filter((x) => x.role === "faculty").map((x) => ({ _id: (x as any)._id || "", name: (x as any).name || "" })))).catch(() => {});
+    fetchUsers().then((u) => setFaculty(u.filter((x) => x.role === "faculty"))).catch(() => {});
     fetchFfcsTimetable().then((data) => {
       if (data.slots.length > 0) {
         setTimetable(data.slots);
