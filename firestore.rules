@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return signedIn() && request.auth.token.get('role', '') == role;
+    }
+
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.get('role', '') == 'admin' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*ileshkumar975@gmail\\.com.*'))
+      );
+    }
+
+    // Admins profile collection (Read only by signed-in users, Writes MUST go through Backend Admin SDK)
+    match /admins/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if false;
+    }
+
+    // User profile index
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Students profile collection
+    match /students/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Teachers profile collection
+    match /teachers/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Branches collection
+    match /branches/{branchId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Default DENY rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

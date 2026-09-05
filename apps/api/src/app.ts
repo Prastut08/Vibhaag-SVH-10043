@@ -18,18 +18,15 @@ import leaveRequestRoutes from "./routes/leaveRequests";
 import sessionRoutes from "./routes/sessions";
 import studentRoutes from "./routes/student";
 import userRoutes from "./routes/users";
+import firebaseRoutes from "./routes/firebase";
+import adminRoutes from "./routes/admin";
 
 export function createApp() {
   const app = express();
   app.use(helmet());
   app.use(
     cors({
-      origin: (origin, callback) => {
-        if (!origin || config.corsOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-        return callback(new Error("Not allowed by CORS"));
-      },
+      origin: true,
       credentials: true,
     })
   );
@@ -38,6 +35,9 @@ export function createApp() {
 
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+  app.use("/firebase", firebaseRoutes);
+  app.use("/admin", adminRoutes);
 
   app.use("/auth", authRoutes);
   app.use("/departments", departmentRoutes);

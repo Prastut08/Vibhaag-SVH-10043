@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
-
 import {
   createBatch,
   createDepartment,
-  createUser,
+  createStudentAccount,
+  createTeacherAccount,
   fetchBatches,
   fetchDepartments,
   fetchUsers,
-  importUsers,
 } from "../lib/api";
 
-type UserRow = { _id: string; name: string; email: string; role: string; rollNumber: string | null };
-
+type UserRow = { _id: string; name: string; email: string; role: string; rollNumber?: string | null };
 type SelectOption = { _id: string; name: string };
 
 export default function PeoplePage() {
@@ -19,16 +17,20 @@ export default function PeoplePage() {
   const [departments, setDepartments] = useState<SelectOption[]>([]);
   const [batches, setBatches] = useState<SelectOption[]>([]);
 
+  // Account creation state
+  const [accountType, setAccountType] = useState<"student" | "teacher">("student");
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("faculty");
+  const [enrollmentNumber, setEnrollmentNumber] = useState("");
+  const [teacherIdentifier, setTeacherIdentifier] = useState("");
+  const [branch, setBranch] = useState("Computer Science");
+  const [semester, setSemester] = useState("1");
+  const [designation, setDesignation] = useState("Assistant Professor");
   const [departmentId, setDepartmentId] = useState("");
   const [batchId, setBatchId] = useState("");
-  const [rollNumber, setRollNumber] = useState("");
-  const [password, setPassword] = useState("changeme123");
 
-  const [csv, setCsv] = useState("name,email,role,departmentCode,batchName,rollNumber,password\n");
   const [message, setMessage] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<{ email: string; password: string; identifier: string } | null>(null);
+
   const [deptName, setDeptName] = useState("");
   const [deptCode, setDeptCode] = useState("");
   const [batchName, setBatchName] = useState("");
@@ -41,31 +43,54 @@ export default function PeoplePage() {
     fetchBatches().then(setBatches).catch(() => setBatches([]));
   }, []);
 
-  const handleCreate = async (event: React.FormEvent) => {
+  const handleCreateUser = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage(null);
+    setCredentials(null);
+
     try {
-      await createUser({
-        name,
-        email,
-        role: role as "admin" | "faculty" | "staff" | "student",
-        departmentId: departmentId || undefined,
-        batchId: batchId || undefined,
-        rollNumber: rollNumber || undefined,
-        password,
-      });
+      if (accountType === "student") {
+        if (!enrollmentNumber.trim()) throw new Error("Enrollment Number is required");
+        const res = await createStudentAccount({
+          enrollmentNumber,
+          name,
+          branch,
+          semester,
+          departmentId: departmentId || undefined,
+          batchId: batchId || undefined,
+        });
+
+        setCredentials({
+          identifier: res.credentials.enrollmentNumber,
+          email: res.credentials.email,
+          password: res.credentials.password,
+        });
+        setMessage("Student account created successfully.");
+      } else {
+        if (!teacherIdentifier.trim()) throw new Error("Teacher Identifier is required");
+        const res = await createTeacherAccount({
+          teacherIdentifier,
+          name,
+          department: branch,
+          designation,
+          departmentId: departmentId || undefined,
+        });
+
+        setCredentials({
+          identifier: res.credentials.teacherIdentifier,
+          email: res.credentials.email,
+          password: res.credentials.password,
+        });
+        setMessage("Teacher account created successfully.");
+      }
+
       const updated = await fetchUsers();
       setUsers(updated);
       setName("");
-      setEmail("");
-      setRole("faculty");
-      setDepartmentId("");
-      setBatchId("");
-      setRollNumber("");
-      setPassword("changeme123");
-      setMessage("User created.");
+      setEnrollmentNumber("");
+      setTeacherIdentifier("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Create failed");
+      setMessage(error instanceof Error ? error.message : "Account creation failed");
     }
   };
 
@@ -80,7 +105,7 @@ export default function PeoplePage() {
       setDeptCode("");
       setMessage("Department created.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Department failed");
+      setMessage(error instanceof Error ? error.message : "Department creation failed");
     }
   };
 
@@ -96,143 +121,154 @@ export default function PeoplePage() {
       setBatchDepartmentId("");
       setMessage("Batch created.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Batch failed");
-    }
-  };
-
-  const handleImport = async () => {
-    setMessage(null);
-    try {
-      await importUsers(csv);
-      const updated = await fetchUsers();
-      setUsers(updated);
-      setMessage("Import complete.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Import failed");
+      setMessage(error instanceof Error ? error.message : "Batch creation failed");
     }
   };
 
   return (
     <div className="grid">
+      {/* Admin User Provisioning Card */}
+      <div className="card" style={{ gridColumn: "1 / -1" }}>
+        <div className="section-title">
+          <h3>Provision Student / Teacher Account</h3>
+        </div>
+
+        <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+          <button
+            type="button"
+            className={`button ${accountType === "student" ? "" : "secondary"}`}
+            onClick={() => { setAccountType("student"); setMessage(null); setCredentials(null); }}
+          >
+            🎓 Add Student
+          </button>
+          <button
+            type="button"
+            className={`button ${accountType === "teacher" ? "" : "secondary"}`}
+            onClick={() => { setAccountType("teacher"); setMessage(null); setCredentials(null); }}
+          >
+            👨‍🏫 Add Teacher
+          </button>
+        </div>
+
+        <form className="form-grid" onSubmit={handleCreateUser}>
+          {accountType === "student" ? (
+            <label className="input">
+              Enrollment Number
+              <input
+                type="text"
+                placeholder="e.g. 23BCS1001"
+                value={enrollmentNumber}
+                onChange={(e) => setEnrollmentNumber(e.target.value)}
+                required
+              />
+            </label>
+          ) : (
+            <label className="input">
+              Teacher Identifier
+              <input
+                type="text"
+                placeholder="e.g. T1001"
+                value={teacherIdentifier}
+                onChange={(e) => setTeacherIdentifier(e.target.value)}
+                required
+              />
+            </label>
+          )}
+
+          <label className="input">
+            Full Name
+            <input
+              type="text"
+              placeholder={accountType === "student" ? "e.g. Rahul Sharma" : "e.g. Dr. Ananya Roy"}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </label>
+
+          <label className="input">
+            Branch / Department
+            <input
+              type="text"
+              placeholder="e.g. Computer Science"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+            />
+          </label>
+
+          {accountType === "student" ? (
+            <label className="input">
+              Semester
+              <input
+                type="text"
+                placeholder="e.g. 1"
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+              />
+            </label>
+          ) : (
+            <label className="input">
+              Designation
+              <input
+                type="text"
+                placeholder="e.g. Assistant Professor"
+                value={designation}
+                onChange={(e) => setDesignation(e.target.value)}
+              />
+            </label>
+          )}
+
+          <button className="button" type="submit" style={{ gridColumn: "1 / -1", marginTop: "8px" }}>
+            Provision {accountType === "student" ? "Student" : "Teacher"} Account
+          </button>
+        </form>
+
+        {credentials && (
+          <div className="notice" style={{ marginTop: "16px", background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}>
+            <h4>Generated Login Credentials</h4>
+            <p><strong>Identifier:</strong> {credentials.identifier}</p>
+            <p><strong>Email:</strong> {credentials.email}</p>
+            <p><strong>Initial Password:</strong> {credentials.password}</p>
+          </div>
+        )}
+
+        {message && !credentials ? <div className="notice" style={{ marginTop: "16px" }}>{message}</div> : null}
+      </div>
+
+      {/* Departments & Batches */}
       <div className="card">
         <div className="section-title">
-          <h3>Departments & batches</h3>
+          <h3>Departments & Batches</h3>
         </div>
         <form className="form-grid" onSubmit={handleDepartment}>
           <label className="input">
-            Department name
-            <input value={deptName} onChange={(event) => setDeptName(event.target.value)} />
+            Department Name
+            <input value={deptName} onChange={(e) => setDeptName(e.target.value)} required />
           </label>
           <label className="input">
-            Department code
-            <input value={deptCode} onChange={(event) => setDeptCode(event.target.value)} />
+            Department Code
+            <input value={deptCode} onChange={(e) => setDeptCode(e.target.value)} required />
           </label>
           <button className="button" type="submit">
-            Create department
+            Create Department
           </button>
         </form>
-        <form className="form-grid" onSubmit={handleBatch}>
+        <form className="form-grid" onSubmit={handleBatch} style={{ marginTop: "16px" }}>
           <label className="input">
-            Batch name
-            <input value={batchName} onChange={(event) => setBatchName(event.target.value)} />
+            Batch Name
+            <input value={batchName} onChange={(e) => setBatchName(e.target.value)} required />
           </label>
           <label className="input">
-            Batch year
-            <input value={batchYear} onChange={(event) => setBatchYear(event.target.value)} />
-          </label>
-          <label className="input">
-            Department
-            <select value={batchDepartmentId} onChange={(event) => setBatchDepartmentId(event.target.value)}>
-              <option value="">Select department</option>
-              {departments.map((department) => (
-                <option key={department._id} value={department._id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
+            Batch Year
+            <input value={batchYear} onChange={(e) => setBatchYear(e.target.value)} required />
           </label>
           <button className="button secondary" type="submit">
-            Create batch
+            Create Batch
           </button>
         </form>
-        {message ? <div className="notice">{message}</div> : null}
-      </div>
-      <div className="card">
-        <div className="section-title">
-          <h3>Add staff or students</h3>
-        </div>
-        <form className="form-grid" onSubmit={handleCreate}>
-          <label className="input">
-            Name
-            <input value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <label className="input">
-            Email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} />
-          </label>
-          <label className="input">
-            Role
-            <select value={role} onChange={(event) => setRole(event.target.value)}>
-              <option value="faculty">Faculty</option>
-              <option value="staff">Staff</option>
-              <option value="student">Student</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
-          <label className="input">
-            Department
-            <select value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
-              <option value="">Select department</option>
-              {departments.map((department) => (
-                <option key={department._id} value={department._id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="input">
-            Batch
-            <select value={batchId} onChange={(event) => setBatchId(event.target.value)}>
-              <option value="">Select batch</option>
-              {batches.map((batch) => (
-                <option key={batch._id} value={batch._id}>
-                  {batch.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="input">
-            Roll number
-            <input value={rollNumber} onChange={(event) => setRollNumber(event.target.value)} />
-          </label>
-          <label className="input">
-            Temp password
-            <input value={password} onChange={(event) => setPassword(event.target.value)} />
-          </label>
-          <button className="button" type="submit">
-            Create user
-          </button>
-        </form>
-        {message ? <div className="notice">{message}</div> : null}
       </div>
 
-      <div className="card">
-        <div className="section-title">
-          <h3>Bulk import (CSV)</h3>
-          <button className="button secondary" onClick={handleImport}>
-            Import
-          </button>
-        </div>
-        <p>
-          Columns: name, email, role, departmentCode, batchName, rollNumber, password. Use department code like CSE
-          and batch name like CSE 2026.
-        </p>
-        <label className="input">
-          CSV data
-          <textarea value={csv} onChange={(event) => setCsv(event.target.value)} />
-        </label>
-      </div>
-
+      {/* Directory */}
       <div className="card">
         <div className="section-title">
           <h3>Directory</h3>
@@ -244,16 +280,14 @@ export default function PeoplePage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
-                <th>Roll no</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user._id}>
-                  <td data-label="Name">{user.name}</td>
-                  <td data-label="Email">{user.email}</td>
-                  <td data-label="Role">{user.role}</td>
-                  <td data-label="Roll no">{user.rollNumber ?? "--"}</td>
+              {users.map((u) => (
+                <tr key={u._id || u.email}>
+                  <td data-label="Name">{u.name}</td>
+                  <td data-label="Email">{u.email}</td>
+                  <td data-label="Role">{u.role}</td>
                 </tr>
               ))}
             </tbody>

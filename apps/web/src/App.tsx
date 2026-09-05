@@ -1,25 +1,36 @@
-import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { BrowserRouter, NavLink, Route, Routes, Navigate, useNavigate, useLocation } from "react-router-dom";
 import {
   BarChart3,
   CalendarDays,
-  Grid,
+  GitBranch,
+  GraduationCap,
   Layers,
-  Library,
   LogOut,
   Megaphone,
   ShieldCheck,
+  UserCheck,
   Users,
+  Shield,
+  User,
   BookOpen,
+  Grid,
+  Library,
   MessageSquare,
   School,
   FileText,
 } from "lucide-react";
 
-import { fetchAuthStatus, fetchMe, login, logout, bootstrapAdmin } from "./lib/api";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./lib/firebase";
+import { fetchMe, logout } from "./lib/api";
+import AdminLoginPage from "./pages/AdminLoginPage";
+import StudentLoginPage from "./pages/StudentLoginPage";
+import TeacherLoginPage from "./pages/TeacherLoginPage";
 import AdminEngagementPage from "./pages/AdminEngagementPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AttendancePage from "./pages/AttendancePage";
+import BranchesPage from "./pages/BranchesPage";
 import DashboardPage from "./pages/DashboardPage";
 import FfcsAdminPage from "./pages/FfcsAdminPage";
 import FfcsFacultyPage from "./pages/FfcsFacultyPage";
@@ -38,16 +49,33 @@ import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
 import FacultyAISummarizerPage from "./pages/FacultyAISummarizerPage";
 import FacultyAcademicEventsPage from "./pages/FacultyAcademicEventsPage";
+import StudentsPage from "./pages/StudentsPage";
+import TeachersPage from "./pages/TeachersPage";
 
-// ── Admin nav
 const adminNavItems = [
-  { to: "/", label: "Overview", icon: BarChart3 },
-  { to: "/attendance", label: "Attendance", icon: ShieldCheck },
-  { to: "/sessions", label: "Timetable", icon: CalendarDays },
-  { to: "/people", label: "People", icon: Users },
-  { to: "/engagement", label: "Engagement", icon: Megaphone },
-  { to: "/analytics", label: "Analytics", icon: Layers },
-  { to: "/ffcs", label: "FFCS", icon: Grid },
+  { to: "/admin/overview", label: "Overview", icon: BarChart3 },
+  { to: "/admin/branches", label: "Branches", icon: GitBranch },
+  { to: "/admin/students", label: "Students", icon: GraduationCap },
+  { to: "/admin/teachers", label: "Teachers", icon: UserCheck },
+  { to: "/admin/attendance", label: "Attendance", icon: ShieldCheck },
+  { to: "/admin/sessions", label: "Timetable", icon: CalendarDays },
+  { to: "/admin/people", label: "People", icon: Users },
+  { to: "/admin/engagement", label: "Engagement", icon: Megaphone },
+  { to: "/admin/analytics", label: "Analytics", icon: Layers },
+  { to: "/admin/ffcs", label: "FFCS", icon: Grid },
+];
+
+const teacherNavItems = [
+  { to: "/teacher/dashboard", label: "Faculty Hub", icon: BarChart3 },
+  { to: "/teacher/attendance", label: "Attendance", icon: ShieldCheck },
+  { to: "/teacher/sessions", label: "Timetable", icon: CalendarDays },
+  { to: "/teacher/people", label: "People", icon: Users },
+  { to: "/teacher/ffcs", label: "FFCS", icon: Grid },
+  { to: "/teacher/leave", label: "Leave", icon: FileText },
+  { to: "/teacher/classroom", label: "Classroom", icon: School },
+  { to: "/teacher/library", label: "Library", icon: Library },
+  { to: "/teacher/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
+  { to: "/teacher/events", label: "Academic Events", icon: BookOpen },
 ];
 
 // ── Faculty nav
@@ -63,447 +91,321 @@ const facultyNavItems = [
   { to: "/faculty/events", label: "Academic Events", icon: BookOpen },
 ];
 
-// ── Student nav
 const studentNavItems = [
-  { to: "/", label: "My Hub", icon: BarChart3 },
-  { to: "/schedule", label: "Schedule", icon: CalendarDays },
-  { to: "/attendance", label: "My Attendance", icon: ShieldCheck },
-  { to: "/announcements", label: "Announcements", icon: Layers },
-  { to: "/leave", label: "Leave Requests", icon: Users },
-  { to: "/feedback", label: "Session Feedback", icon: Megaphone },
-  { to: "/library", label: "Library", icon: Library },
-  { to: "/ffcs", label: "FFCS", icon: Grid },
+  { to: "/student/dashboard", label: "My Hub", icon: BarChart3 },
+  { to: "/student/schedule", label: "Schedule", icon: CalendarDays },
+  { to: "/student/attendance", label: "My Attendance", icon: ShieldCheck },
+  { to: "/student/announcements", label: "Announcements", icon: Layers },
+  { to: "/student/leave", label: "Leave Requests", icon: Users },
+  { to: "/student/feedback", label: "Session Feedback", icon: Megaphone },
+  { to: "/student/library", label: "Library", icon: Library },
+  { to: "/student/ffcs", label: "FFCS", icon: Grid }
 ];
 
-// ── Role accent colours
-const ROLE_COLORS: Record<string, string> = {
-  admin: "#059669",
-  faculty: "#4f46e5",
-  student: "#2563eb",
-};
-
-function AuthScreen({ onAuthSuccess }: { onAuthSuccess: (user: { name: string; role: string }) => void }) {
-  const [userType, setUserType] = useState<"student" | "faculty" | "admin">("student");
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [rollNumber, setRollNumber] = useState("");
-  const [department, setDepartment] = useState("Computer Science");
-  const [designation, setDesignation] = useState("Assistant Professor");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const { loginRoleBased, signUpRoleBased } = await import("./lib/api");
-      if (isSignUp) {
-        if (!name) throw new Error("Please enter your name");
-        const user = await signUpRoleBased({
-          name,
-          email,
-          password,
-          userType,
-          rollNumber: userType === "student" ? rollNumber : undefined,
-          department: userType !== "admin" ? department : undefined,
-          designation: userType === "faculty" ? designation : undefined,
-        });
-        onAuthSuccess({ name: user.name, role: userType });
-      } else {
-        const user = await loginRoleBased(email, password, userType);
-        onAuthSuccess({ name: user.name, role: userType });
-      }
-    } catch (err: any) {
-      setError(err?.message || "Authentication failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const userTypeTitle = userType === "student" ? "Student" : userType === "faculty" ? "Faculty" : "Admin";
-  const accentColor = ROLE_COLORS[userType];
-
+function PortalSelectionPage() {
+  const navigate = useNavigate();
   return (
-    <div className="login-shell">
-      <div className="login-card fade-in" style={{ maxWidth: "480px", width: "100%" }}>
-        {/* Portal selector */}
-        <div style={{ display: "flex", gap: "6px", marginBottom: "20px", background: "#e5e7eb", padding: "4px", borderRadius: "10px" }}>
-          {(["student", "faculty", "admin"] as const).map((type) => (
-            <button
-              key={type}
-              type="button"
-              className="button"
-              id={`portal-${type}`}
-              style={{
-                flex: 1,
-                padding: "8px 4px",
-                fontSize: "13px",
-                fontWeight: 600,
-                background: userType === type ? ROLE_COLORS[type] : "transparent",
-                color: userType === type ? "#ffffff" : "#374151",
-                transition: "background 0.2s",
-              }}
-              onClick={() => { setUserType(type); setError(null); }}
-            >
-              {type === "student" ? "🎓 Student" : type === "faculty" ? "👨‍🏫 Faculty" : "🛠️ Admin"}
-            </button>
-          ))}
+    <div className="login-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "20px" }}>
+      <div style={{ textTransform: "uppercase", tracking: "2px", fontSize: "12px", fontWeight: 700, color: "#6366f1", marginBottom: "8px" }}>
+        Vibhaag Portal
+      </div>
+      <h1 style={{ fontSize: "32px", fontWeight: 800, marginBottom: "12px", color: "#111827" }}>
+        Select Your Campus Portal
+      </h1>
+      <p style={{ color: "#6b7280", marginBottom: "32px", textAlign: "center", maxWidth: "420px" }}>
+        Welcome to Vibhaag College Management System. Please select your role to proceed to the designated portal.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "20px", width: "100%", maxWidth: "800px" }}>
+        {/* Admin Card */}
+        <div
+          onClick={() => navigate("/admin/login")}
+          style={{
+            background: "#ffffff",
+            padding: "24px",
+            borderRadius: "16px",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
+            cursor: "pointer",
+            transition: "transform 0.2s, box-shadow 0.2s",
+          }}
+          className="portal-card"
+        >
+          <div style={{ background: "#ecfdf5", color: "#059669", width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
+            <Shield size={24} />
+          </div>
+          <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>Admin Portal</h3>
+          <p style={{ fontSize: "14px", color: "#6b7280" }}>Manage departments, branches, system settings, and user access control.</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "16px", textAlign: "center" }}>
-            <h2 style={{ fontSize: "24px", fontWeight: "700", color: "#111827", marginBottom: "4px" }}>
-              {userTypeTitle} {isSignUp ? "Registration" : "Portal Login"}
-            </h2>
-            <p style={{ fontSize: "14px", color: "#6b7280" }}>
-              {isSignUp
-                ? `Create a new ${userTypeTitle} account`
-                : `Sign in to access the ${userTypeTitle} dashboard`}
-            </p>
+        {/* Teacher Card */}
+        <div
+          onClick={() => navigate("/teacher/login")}
+          style={{
+            background: "#ffffff",
+            padding: "24px",
+            borderRadius: "16px",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
+            cursor: "pointer",
+            transition: "transform 0.2s, box-shadow 0.2s",
+          }}
+          className="portal-card"
+        >
+          <div style={{ background: "#eef2ff", color: "#4f46e5", width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
+            <BookOpen size={24} />
           </div>
+          <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>Teacher Portal</h3>
+          <p style={{ fontSize: "14px", color: "#6b7280" }}>Record attendance, handle student evaluation, leave approvals, and classes.</p>
+        </div>
 
-          {/* Sign In / Sign Up toggle */}
-          <div style={{ display: "flex", gap: "8px", background: "#f3f4f6", padding: "4px", borderRadius: "8px", marginBottom: "16px" }}>
-            <button
-              type="button"
-              className={`button ${!isSignUp ? "" : "secondary"}`}
-              style={{ flex: 1, padding: "6px" }}
-              onClick={() => { setIsSignUp(false); setError(null); }}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              className={`button ${isSignUp ? "" : "secondary"}`}
-              style={{ flex: 1, padding: "6px" }}
-              onClick={() => { setIsSignUp(true); setError(null); }}
-            >
-              Sign Up
-            </button>
+        {/* Student Card */}
+        <div
+          onClick={() => navigate("/student/login")}
+          style={{
+            background: "#ffffff",
+            padding: "24px",
+            borderRadius: "16px",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
+            cursor: "pointer",
+            transition: "transform 0.2s, box-shadow 0.2s",
+          }}
+          className="portal-card"
+        >
+          <div style={{ background: "#eff6ff", color: "#2563eb", width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
+            <User size={24} />
           </div>
-
-          {isSignUp && (
-            <label className="input">
-              Full Name
-              <input
-                type="text"
-                placeholder={userType === "student" ? "e.g. Rahul Sharma" : userType === "faculty" ? "e.g. Dr. Ananya Roy" : "e.g. Campus Admin"}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </label>
-          )}
-
-          {isSignUp && userType === "student" && (
-            <label className="input">
-              Roll / Enrollment Number
-              <input
-                type="text"
-                placeholder="e.g. CS-2024-042"
-                value={rollNumber}
-                onChange={(e) => setRollNumber(e.target.value)}
-                required
-              />
-            </label>
-          )}
-
-          {isSignUp && (userType === "student" || userType === "faculty") && (
-            <label className="input">
-              Department
-              <input
-                type="text"
-                placeholder="e.g. Computer Science"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                required
-              />
-            </label>
-          )}
-
-          {isSignUp && userType === "faculty" && (
-            <label className="input">
-              Designation
-              <input
-                type="text"
-                placeholder="e.g. Associate Professor"
-                value={designation}
-                onChange={(e) => setDesignation(e.target.value)}
-                required
-              />
-            </label>
-          )}
-
-          <label className="input">
-            {userTypeTitle} Email address
-            <input
-              type="email"
-              id={`${userType}-email`}
-              placeholder={`${userType}@vibhaag.dev`}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </label>
-
-          <label className="input">
-            Password
-            <input
-              type="password"
-              id={`${userType}-password`}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
-
-          {error ? <div className="notice" style={{ background: "#b91c1c" }}>{error}</div> : null}
-
-          <button
-            className="button"
-            type="submit"
-            id={`${userType}-submit`}
-            disabled={loading}
-            style={{ width: "100%", marginTop: "12px", padding: "10px", background: accentColor }}
-          >
-            {loading ? "Processing..." : isSignUp ? `Create ${userTypeTitle} Account` : `Sign In as ${userTypeTitle}`}
-          </button>
-        </form>
+          <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>Student Portal</h3>
+          <p style={{ fontSize: "14px", color: "#6b7280" }}>View attendance records, schedules, feedback, and campus announcements.</p>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Shared sidebar shell
-function AppShell({
-  user,
-  navItems,
-  roleLabel,
-  accentColor,
-  onLogout,
-  children,
-}: {
-  user: { name: string; role: string };
-  navItems: { to: string; label: string; icon: any }[];
-  roleLabel: string;
-  accentColor: string;
-  onLogout: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="app-shell fade-in">
-      <aside className="sidebar">
-        <div>
-          <h1>Vibhaag</h1>
-          <p style={{ color: "#d1c4b6", fontSize: "13px" }}>
-            {user.name}
-            <span
-              style={{
-                marginLeft: "8px",
-                background: accentColor,
-                color: "#fff",
-                borderRadius: "6px",
-                padding: "1px 7px",
-                fontSize: "11px",
-                fontWeight: 700,
-                textTransform: "capitalize",
-              }}
-            >
-              {roleLabel}
-            </span>
-          </p>
-        </div>
-        <nav className="nav-group">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
-              id={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-            >
-              <item.icon size={18} />
-              {item.label}
-              {item.label === "FFCS" && (
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    background: accentColor,
-                    color: "#fff",
-                    borderRadius: "5px",
-                    padding: "1px 6px",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                  }}
-                >
-                  NEW
-                </span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-        <button className="button secondary" onClick={onLogout} style={{ marginTop: "auto" }} id="logout-btn">
-          <LogOut size={16} /> Logout
-        </button>
-      </aside>
-      <main className="main">{children}</main>
-    </div>
-  );
-}
-
-export default function App() {
+function MainApp() {
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [booting, setBooting] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    import("./lib/firebase").then(({ auth, db }) => {
-      import("firebase/auth").then(({ onAuthStateChanged }) => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-          if (firebaseUser) {
-            try {
-              const { getDoc, doc } = await import("firebase/firestore");
-              const docSnap = await getDoc(doc(db, "users", firebaseUser.uid));
-              if (docSnap.exists()) {
-                const data = docSnap.data();
-                // Use the role stored in Firestore — DO NOT default to admin
-                const role = data.role || "student";
-                setUser({ name: data.name || firebaseUser.displayName || "User", role });
-              } else {
-                // User exists in Firebase Auth but not in Firestore users collection.
-                // Check role-specific collections to determine role.
-                const { getDoc: gd, doc: d } = await import("firebase/firestore");
-                const studentDoc = await gd(d(db, "students", firebaseUser.uid));
-                if (studentDoc.exists()) {
-                  const data = studentDoc.data();
-                  setUser({ name: data.name || "Student", role: "student" });
-                } else {
-                  const facultyDoc = await gd(d(db, "faculty", firebaseUser.uid));
-                  if (facultyDoc.exists()) {
-                    const data = facultyDoc.data();
-                    setUser({ name: data.name || "Faculty", role: "faculty" });
-                  } else {
-                    const adminDoc = await gd(d(db, "admins", firebaseUser.uid));
-                    if (adminDoc.exists()) {
-                      const data = adminDoc.data();
-                      setUser({ name: data.name || "Admin", role: "admin" });
-                    } else {
-                      // Completely new user — default to student (safest)
-                      setUser({
-                        name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
-                        role: "student",
-                      });
-                    }
-                  }
-                }
-              }
-            } catch {
-              // Firestore unavailable — use displayName, default to student
-              setUser({
-                name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
-                role: "student",
-              });
-            }
-          } else {
-            setUser(null);
-          }
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const profile = await fetchMe();
+          setUser({ name: profile.name, role: profile.role });
+        } catch {
+          await logout();
+          setUser(null);
+        } finally {
           setBooting(false);
-        });
-        return () => unsubscribe();
-      });
+        }
+      } else {
+        localStorage.removeItem("vibhaag-token");
+        setUser(null);
+        setBooting(false);
+      }
     });
+
+    return () => unsubscribe();
   }, []);
 
   const handleLogout = async () => {
-    const { logout } = await import("./lib/api");
+    const role = user?.role;
     await logout();
     setUser(null);
+    if (role === "admin") {
+      navigate("/admin/login");
+    } else if (role === "student") {
+      navigate("/student/login");
+    } else if (role === "teacher") {
+      navigate("/teacher/login");
+    } else {
+      navigate("/");
+    }
   };
 
-  const mainContent = useMemo(() => {
-    if (booting) {
-      return <div className="login-shell" style={{ fontSize: "18px", color: "var(--muted)" }}>⏳ Loading…</div>;
+  const handleAuthSuccess = (userData: { name: string; role: string }) => {
+    setUser(userData);
+    if (userData.role === "admin") {
+      navigate("/admin/overview");
+    } else if (userData.role === "student") {
+      navigate("/student/dashboard");
+    } else if (userData.role === "teacher") {
+      navigate("/teacher/dashboard");
     }
+  };
 
-    if (!user) {
-      return <AuthScreen onAuthSuccess={(userData) => setUser(userData)} />;
-    }
+  if (booting) {
+    return <div className="login-shell" style={{ color: "#4b5563", fontSize: "16px" }}>Authenticating session...</div>;
+  }
 
-    // ── STUDENT
-    if (user.role === "student") {
-      return (
-        <AppShell
-          user={user}
-          navItems={studentNavItems}
-          roleLabel="Student"
-          accentColor={ROLE_COLORS.student}
-          onLogout={handleLogout}
-        >
-          <Routes>
-            <Route path="/" element={<StudentHomePage />} />
-            <Route path="/schedule" element={<StudentSchedulePage />} />
-            <Route path="/attendance" element={<StudentAttendancePage />} />
-            <Route path="/announcements" element={<StudentAnnouncementsPage />} />
-            <Route path="/leave" element={<StudentLeavePage />} />
-            <Route path="/feedback" element={<StudentFeedbackPage />} />
-            <Route path="/library" element={<StudentLibraryPage userRole={user.role} userName={user.name} />} />
-            <Route path="/ffcs" element={<FfcsStudentPage />} />
-          </Routes>
-        </AppShell>
-      );
-    }
-
-    // ── FACULTY
-    if (user.role === "faculty") {
-      return (
-        <AppShell
-          user={user}
-          navItems={facultyNavItems}
-          roleLabel="Faculty"
-          accentColor={ROLE_COLORS.faculty}
-          onLogout={handleLogout}
-        >
-          <Routes>
-            {/* Faculty overview: re-use admin dashboard read-only */}
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/sessions" element={<SessionsPage />} />
-            <Route path="/attendance" element={<AttendancePage />} />
-            <Route path="/ffcs" element={<FfcsFacultyPage />} />
-            <Route path="/faculty/leave" element={<FacultyLeavePage />} />
-            <Route path="/faculty/classroom" element={<FacultyClassroomPage />} />
-            <Route path="/faculty/library" element={<FacultyLibraryPage userRole={user.role} userName={user.name} />} />
-            <Route path="/faculty/ai-summarizer" element={<FacultyAISummarizerPage />} />
-            <Route path="/faculty/events" element={<FacultyAcademicEventsPage />} />
-          </Routes>
-        </AppShell>
-      );
-    }
-
-    // ── ADMIN (default for role === "admin" or anything unrecognized)
+  // Unauthenticated users
+  if (!user) {
     return (
-      <AppShell
-        user={user}
-        navItems={adminNavItems}
-        roleLabel="Admin"
-        accentColor={ROLE_COLORS.admin}
-        onLogout={handleLogout}
-      >
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/attendance" element={<AttendancePage />} />
-          <Route path="/sessions" element={<SessionsPage />} />
-          <Route path="/people" element={<PeoplePage />} />
-          <Route path="/engagement" element={<AdminEngagementPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/library" element={<FacultyLibraryPage userRole={user.role} userName={user.name} />} />
-          <Route path="/ffcs" element={<FfcsAdminPage />} />
-        </Routes>
-      </AppShell>
+      <Routes>
+        <Route path="/admin/login" element={<AdminLoginPage onAuthSuccess={handleAuthSuccess} />} />
+        <Route path="/student/login" element={<StudentLoginPage onAuthSuccess={handleAuthSuccess} />} />
+        <Route path="/teacher/login" element={<TeacherLoginPage onAuthSuccess={handleAuthSuccess} />} />
+        <Route path="/" element={<PortalSelectionPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     );
-  }, [booting, user]);
+  }
 
-  return <BrowserRouter>{mainContent}</BrowserRouter>;
+  // Student authenticated view
+  if (user.role === "student") {
+    if (location.pathname.startsWith("/admin") || location.pathname.startsWith("/teacher")) {
+      return <Navigate to="/student/dashboard" replace />;
+    }
+
+    return (
+      <div className="app-shell fade-in">
+        <aside className="sidebar">
+          <div>
+            <h1>Vibhaag</h1>
+            <p>{user.name} (Student)</p>
+          </div>
+          <nav className="nav-group">
+            {studentNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+              >
+                <item.icon size={18} />
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          <button className="button secondary" onClick={handleLogout} style={{ marginTop: "auto" }}>
+            <LogOut size={16} /> Logout
+          </button>
+        </aside>
+        <main className="main">
+          <Routes>
+            <Route path="/student/dashboard" element={<StudentHomePage />} />
+            <Route path="/student/schedule" element={<StudentSchedulePage />} />
+            <Route path="/student/attendance" element={<StudentAttendancePage />} />
+            <Route path="/student/announcements" element={<StudentAnnouncementsPage />} />
+            <Route path="/student/leave" element={<StudentLeavePage />} />
+            <Route path="/student/feedback" element={<StudentFeedbackPage />} />
+            <Route path="/student/ffcs" element={<FfcsStudentPage />} />
+            <Route path="/" element={<Navigate to="/student/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
+
+  // Teacher authenticated view
+  if (user.role === "teacher" || user.role === "faculty") {
+    if (location.pathname.startsWith("/admin") || location.pathname.startsWith("/student")) {
+      return <Navigate to="/teacher/dashboard" replace />;
+    }
+
+    return (
+      <div className="app-shell fade-in">
+        <aside className="sidebar">
+          <div>
+            <h1>Vibhaag</h1>
+            <p>{user.name} (Teacher)</p>
+          </div>
+          <nav className="nav-group">
+            {teacherNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+              >
+                <item.icon size={18} />
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          <button className="button secondary" onClick={handleLogout} style={{ marginTop: "auto" }}>
+            <LogOut size={16} /> Logout
+          </button>
+        </aside>
+        <main className="main">
+          <Routes>
+            <Route path="/teacher/dashboard" element={<DashboardPage />} />
+            <Route path="/teacher/attendance" element={<AttendancePage />} />
+            <Route path="/teacher/sessions" element={<SessionsPage />} />
+            <Route path="/teacher/people" element={<PeoplePage />} />
+            <Route path="/teacher/ffcs" element={<FfcsFacultyPage />} />
+            <Route path="/teacher/leave" element={<FacultyLeavePage />} />
+            <Route path="/teacher/classroom" element={<FacultyClassroomPage />} />
+            <Route path="/teacher/library" element={<FacultyLibraryPage />} />
+            <Route path="/teacher/ai-summarizer" element={<FacultyAISummarizerPage />} />
+            <Route path="/teacher/events" element={<FacultyAcademicEventsPage />} />
+            <Route path="/" element={<Navigate to="/teacher/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/teacher/dashboard" replace />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
+
+  // Admin authenticated view
+  if (user.role === "admin") {
+    if (location.pathname.startsWith("/student") || location.pathname.startsWith("/teacher")) {
+      return <Navigate to="/admin/overview" replace />;
+    }
+
+    return (
+      <div className="app-shell fade-in">
+        <aside className="sidebar">
+          <div>
+            <h1>Vibhaag</h1>
+            <p>{user.name} (Admin)</p>
+          </div>
+          <nav className="nav-group">
+            {adminNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+              >
+                <item.icon size={18} />
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          <button className="button secondary" onClick={handleLogout} style={{ marginTop: "auto" }}>
+            <LogOut size={16} /> Logout
+          </button>
+        </aside>
+        <main className="main">
+          <Routes>
+            <Route path="/admin/overview" element={<DashboardPage />} />
+            <Route path="/admin/branches" element={<BranchesPage />} />
+            <Route path="/admin/students" element={<StudentsPage />} />
+            <Route path="/admin/teachers" element={<TeachersPage />} />
+            <Route path="/admin/attendance" element={<AttendancePage />} />
+            <Route path="/admin/sessions" element={<SessionsPage />} />
+            <Route path="/admin/people" element={<PeoplePage />} />
+            <Route path="/admin/engagement" element={<AdminEngagementPage />} />
+            <Route path="/admin/analytics" element={<AnalyticsPage />} />
+            <Route path="/admin/ffcs" element={<FfcsAdminPage />} />
+            <Route path="/" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="*" element={<Navigate to="/admin/overview" replace />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
+
+  return <Navigate to="/" replace />;
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <MainApp />
+    </BrowserRouter>
+  );
 }

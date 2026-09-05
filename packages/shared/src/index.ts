@@ -1,7 +1,18 @@
 import { z } from "zod";
 
-export const RoleSchema = z.enum(["admin", "faculty", "staff", "student"]);
+export const CampusHubRoleSchema = z.enum(["admin", "teacher", "student"]);
+export type CampusHubRole = z.infer<typeof CampusHubRoleSchema>;
+
+export const RoleSchema = z.enum(["admin", "teacher", "student", "faculty", "staff"]);
 export type Role = z.infer<typeof RoleSchema>;
+
+export interface FirebaseUserPayload {
+  id: string;
+  uid: string;
+  email: string | null;
+  role?: CampusHubRole;
+  status?: string;
+}
 
 export const UserSchema = z.object({
   id: z.string(),

@@ -13,16 +13,25 @@ import {
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { db, auth, googleProvider } from "./firebase";
+import { db, auth } from "./firebase";
 import type { AuthResponse } from "@vibhaag/shared";
 
 // ----------------------------------------------------
-// AUTHENTICATION
+// AUTHENTICATION & API BASE URL RESOLUTION
 // ----------------------------------------------------
+const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== "undefined" && window.location && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
+  return "http://localhost:4000";
+};
+
+export const API_BASE = getApiBaseUrl();
 
 // Role-based Firestore user authentication & collection storage
 export async function loginRoleBased(email: string, password: string, userType: "student" | "faculty" | "admin") {
@@ -30,7 +39,7 @@ export async function loginRoleBased(email: string, password: string, userType: 
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const collectionName = userType === "student" ? "students" : userType === "faculty" ? "faculty" : "admins";
     const userDoc = await getDoc(doc(db, collectionName, cred.user.uid));
-    
+
     let userData: any;
     if (userDoc.exists()) {
       userData = userDoc.data();
@@ -59,70 +68,57 @@ export async function loginRoleBased(email: string, password: string, userType: 
 
 export async function signUpRoleBased(payload: {
   name: string;
-  email: string;
-  password: string;
-  userType: "student" | "faculty" | "admin";
+  email?: string;
+  enrollmentNo?: string;
+  password?: string;
+  userType: "student" | "faculty" | "admin" | "teacher";
   rollNumber?: string;
   department?: string;
   designation?: string;
 }) {
-  const { name, email, password, userType, rollNumber, department, designation } = payload;
+  const normalizedRole: "admin" | "teacher" | "student" =
+    payload.userType === "faculty" ? "teacher" : payload.userType;
+
+  if (payload.userType === "student" || payload.userType === "faculty" || payload.userType === "teacher") {
+    throw new Error(
+      "Self-signup is strictly disabled for students and teachers. User accounts can only be provisioned by an Administrator using an Enrollment Number."
+    );
+  }
+
+  const email =
+    payload.email || (payload.enrollmentNo ? `${payload.enrollmentNo.toLowerCase()}@gmail.com` : "");
+  const password = payload.password || "admin1234";
+
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const collectionName = userType === "student" ? "students" : userType === "faculty" ? "faculty" : "admins";
-    
+    const collectionName = "admins";
+
     const userData = {
       id: cred.user.uid,
-      name,
+      name: payload.name,
       email,
-      role: userType,
-      ...(rollNumber ? { rollNumber } : {}),
-      ...(department ? { department } : {}),
-      ...(designation ? { designation } : {}),
+      role: normalizedRole,
+      ...(payload.enrollmentNo ? { enrollmentNo: payload.enrollmentNo } : {}),
+      ...(payload.rollNumber ? { rollNumber: payload.rollNumber } : {}),
+      ...(payload.department ? { department: payload.department } : {}),
+      ...(payload.designation ? { designation: payload.designation } : {}),
       createdAt: new Date().toISOString(),
     };
 
-    // Store in role-specific Firestore collection (students/faculty/admins)
     await setDoc(doc(db, collectionName, cred.user.uid), userData);
-    // Also store in general users index
     await setDoc(doc(db, "users", cred.user.uid), userData);
 
     const token = await cred.user.getIdToken();
     localStorage.setItem("vibhaag-token", token);
     return userData;
   } catch (e: any) {
-    console.warn("Sign up fallback notice:", e.message);
-    return { id: "user-" + Date.now(), name, email, role: userType };
+    console.warn("Sign up notice:", e.message);
+    return { id: "user-" + Date.now(), name: payload.name, email, role: normalizedRole };
   }
 }
 
-export async function loginWithGoogleRoleBased(userType: "student" | "faculty" | "admin") {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
-    const collectionName = userType === "student" ? "students" : userType === "faculty" ? "faculty" : "admins";
-    const userRef = doc(db, collectionName, user.uid);
-    const userDoc = await getDoc(userRef);
-
-    if (!userDoc.exists()) {
-      const userData = {
-        id: user.uid,
-        name: user.displayName || "Google User",
-        email: user.email,
-        role: userType,
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(userRef, userData);
-      await setDoc(doc(db, "users", user.uid), userData);
-    }
-
-    const token = await user.getIdToken();
-    localStorage.setItem("vibhaag-token", token);
-    return { id: user.uid, name: user.displayName || "Google User", email: user.email || "", role: userType };
-  } catch (error: any) {
-    console.error("Google Auth Error:", error);
-    throw new Error(error.message || "Google sign-in failed");
-  }
+export async function loginWithGoogleRoleBased(_userType: "student" | "faculty" | "admin") {
+  throw new Error("Google login is disabled. Account authorization is managed exclusively by the Administrator.");
 }
 
 export async function login(email: string, password: string) {
@@ -130,7 +126,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function loginWithGoogle() {
-  return loginWithGoogleRoleBased("admin");
+  throw new Error("Google login is disabled. Account authorization is managed exclusively by the Administrator.");
 }
 
 export async function logout() {
@@ -151,20 +147,48 @@ export async function bootstrapAdmin(name: string, email: string, password: stri
 }
 
 export async function fetchMe() {
-  if (auth.currentUser) {
-    const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-    if (userDoc.exists()) {
-      const data = userDoc.data();
-      return { id: auth.currentUser.uid, name: data.name, email: data.email, role: data.role };
-    }
-    return {
-      id: auth.currentUser.uid,
-      name: auth.currentUser.displayName || "User",
-      email: auth.currentUser.email || "",
-      role: "admin",
-    };
+  if (!auth.currentUser) {
+    throw new Error("No active Firebase session");
   }
-  return { id: "admin-uid", name: "Campus Admin", email: "admin@vibhaag.dev", role: "admin" };
+
+  const token = await auth.currentUser.getIdToken(true);
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to verify Campus Hub user profile");
+  }
+
+  return data;
+}
+
+export async function verifyPortalLogin(expectedRole: "admin" | "student" | "teacher", identifier?: string) {
+  if (!auth.currentUser) {
+    throw new Error("No active Firebase session");
+  }
+
+  const token = await auth.currentUser.getIdToken(true);
+  localStorage.setItem("vibhaag-token", token);
+
+  const res = await fetch(`${API_BASE}/auth/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ expectedRole, identifier }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Authentication failed");
+  }
+
+  return data;
 }
 
 // ----------------------------------------------------
@@ -448,10 +472,6 @@ export async function checkOut(attendanceId: string) {
   }
 }
 
-// ----------------------------------------------------
-// FFCS — Fully Flexible Credit System
-// ----------------------------------------------------
-
 export type FfcsConfig = {
   semester: string;
   classrooms: number;
@@ -699,314 +719,238 @@ export async function fetchFfcsConfig(): Promise<FfcsConfig | null> {
   } catch { /* fallback */ }
   return null;
 }
-
-export type LibraryBook = {
-  _id?: string;
-  title: string;
-  author: string;
-  genre: string;
-  isbn: string;
-  available: boolean;
-  uploadedBy: string;
-  uploadedByName: string;
-};
-
-const DEFAULT_GENRES = [
-  "Computer Science",
-  "Mathematics",
-  "Physics",
-  "Chemistry",
-  "Biology",
-  "Literature",
-  "History",
-  "Engineering",
-];
-
-export async function fetchLibraryBooks(): Promise<LibraryBook[]> {
+export async function createStudentAccount(payload: {
+  enrollmentNumber: string;
+  name: string;
+  branch?: string;
+  semester?: string | number;
+  departmentId?: string;
+  batchId?: string;
+}) {
   try {
-    const colRef = collection(db, "library-books");
-    const snapshot = await getDocs(colRef);
-    if (snapshot.empty) {
-      const seed = [
-        { _id: "b1", title: "Clean Code", author: "Robert C. Martin", genre: "Computer Science", isbn: "978-0132350884", available: true, uploadedBy: "f1", uploadedByName: "Dr. Ananya Roy" },
-        { _id: "b2", title: "Design Patterns", author: "Gang of Four", genre: "Computer Science", isbn: "978-0201633610", available: false, uploadedBy: "f2", uploadedByName: "Prof. Vikram Patel" },
-        { _id: "b3", title: "Introduction to Algorithms", author: "Cormen et al.", genre: "Computer Science", isbn: "978-0262033848", available: true, uploadedBy: "f3", uploadedByName: "Dr. Meera Krishnan" },
-        { _id: "b4", title: "The Pragmatic Programmer", author: "Hunt & Thomas", genre: "Computer Science", isbn: "978-0201616224", available: true, uploadedBy: "f4", uploadedByName: "Prof. Suresh Nair" },
-        { _id: "b5", title: "Data Structures and Algorithms Made Easy", author: "Narasimha Karumanchi", genre: "Computer Science", isbn: "978-8193245279", available: true, uploadedBy: "f1", uploadedByName: "Dr. Ananya Roy" },
-        { _id: "b6", title: "Operating System Concepts", author: "Silberschatz", genre: "Computer Science", isbn: "978-1119456339", available: true, uploadedBy: "f5", uploadedByName: "Dr. Pooja Gupta" },
-        { _id: "b7", title: "Computer Networks", author: "Tanenbaum", genre: "Computer Science", isbn: "978-0132126953", available: false, uploadedBy: "f6", uploadedByName: "Prof. Rajesh Kumar" },
-        { _id: "b8", title: "Linear Algebra and Its Applications", author: "Lay", genre: "Mathematics", isbn: "978-0321982384", available: true, uploadedBy: "f3", uploadedByName: "Dr. Meera Krishnan" },
-        { _id: "b9", title: "Engineering Mechanics", author: "Hibbeler", genre: "Engineering", isbn: "978-0133915427", available: true, uploadedBy: "f6", uploadedByName: "Prof. Rajesh Kumar" },
-        { _id: "b10", title: "Digital Design", author: "Manivannan", genre: "Engineering", isbn: "978-9332575915", available: true, uploadedBy: "f2", uploadedByName: "Prof. Vikram Patel" },
-      ];
-      for (const item of seed) {
-        await setDoc(doc(db, "library-books", item._id), item);
-      }
-      return seed;
-    }
-    return snapshot.docs.map((doc) => ({ _id: doc.id, id: doc.id, ...doc.data() })) as unknown as LibraryBook[];
-  } catch (error) {
-    console.warn("Firestore read error on [library-books], using fallback:", error);
-    return [
-      { _id: "b1", title: "Clean Code", author: "Robert C. Martin", genre: "Computer Science", isbn: "978-0132350884", available: true, uploadedBy: "f1", uploadedByName: "Dr. Ananya Roy" },
-      { _id: "b2", title: "Design Patterns", author: "Gang of Four", genre: "Computer Science", isbn: "978-0201633610", available: false, uploadedBy: "f2", uploadedByName: "Prof. Vikram Patel" },
-      { _id: "b3", title: "Introduction to Algorithms", author: "Cormen et al.", genre: "Computer Science", isbn: "978-0262033848", available: true, uploadedBy: "f3", uploadedByName: "Dr. Meera Krishnan" },
-      { _id: "b4", title: "The Pragmatic Programmer", author: "Hunt & Thomas", genre: "Computer Science", isbn: "978-0201616224", available: true, uploadedBy: "f4", uploadedByName: "Prof. Suresh Nair" },
-      { _id: "b5", title: "Data Structures and Algorithms Made Easy", author: "Narasimha Karumanchi", genre: "Computer Science", isbn: "978-8193245279", available: true, uploadedBy: "f1", uploadedByName: "Dr. Ananya Roy" },
-      { _id: "b6", title: "Operating System Concepts", author: "Silberschatz", genre: "Computer Science", isbn: "978-1119456339", available: true, uploadedBy: "f5", uploadedByName: "Dr. Pooja Gupta" },
-      { _id: "b7", title: "Computer Networks", author: "Tanenbaum", genre: "Computer Science", isbn: "978-0132126953", available: false, uploadedBy: "f6", uploadedByName: "Prof. Rajesh Kumar" },
-      { _id: "b8", title: "Linear Algebra and Its Applications", author: "Lay", genre: "Mathematics", isbn: "978-0321982384", available: true, uploadedBy: "f3", uploadedByName: "Dr. Meera Krishnan" },
-      { _id: "b9", title: "Engineering Mechanics", author: "Hibbeler", genre: "Engineering", isbn: "978-0133915427", available: true, uploadedBy: "f6", uploadedByName: "Prof. Rajesh Kumar" },
-      { _id: "b10", title: "Digital Design", author: "Manivannan", genre: "Engineering", isbn: "978-9332575915", available: true, uploadedBy: "f2", uploadedByName: "Prof. Vikram Patel" },
-    ];
-  }
-}
-
-export async function createLibraryBook(payload: Omit<LibraryBook, "_id">): Promise<LibraryBook> {
-  try {
-    const docRef = await addDoc(collection(db, "library-books"), payload);
-    return { _id: docRef.id, ...payload };
-  } catch (e) {
-    return { _id: "book-" + Date.now(), ...payload };
-  }
-}
-
-export async function fetchLibraryGenres(): Promise<string[]> {
-  return DEFAULT_GENRES;
-}
-
-// ----------------------------------------------------
-// CLOUDINARY FILE UPLOAD & LIBRARY RESOURCE MANAGEMENT
-// ----------------------------------------------------
-
-async function generateCloudinarySignature(params: Record<string, string | number>, apiSecret: string) {
-  const sortedKeys = Object.keys(params).sort();
-  const serialized = sortedKeys.map((key) => `${key}=${params[key]}`).join("&") + apiSecret;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(serialized);
-  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-export async function uploadToCloudinary(file: File, customCloudName?: string) {
-  const cloudName = customCloudName || import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "campus-management";
-  const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || "678676245471742";
-  const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || "awoBs93k9LwmFyEQuJg3dRAls-Q";
-  const isImage = file.type.startsWith("image/");
-
-  // Try Cloudinary with 2.5-second timeout
-  try {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const signature = await generateCloudinarySignature({ timestamp }, apiSecret);
-    const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/${isImage ? "image" : "auto"}/upload`;
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("api_key", apiKey);
-    formData.append("timestamp", timestamp.toString());
-    formData.append("signature", signature);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-    const res = await fetch(endpoint, {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : localStorage.getItem("vibhaag-token");
+    const res = await fetch(`${API_BASE}/admin/users/student`, {
       method: "POST",
-      body: formData,
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId));
-
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        public_id: data.public_id || "cld_" + Date.now(),
-        secure_url: data.secure_url || data.url,
-        format: data.format || file.name.split(".").pop() || "file",
-        bytes: data.bytes || file.size,
-        resource_type: data.resource_type || (isImage ? "image" : "raw"),
-      };
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to create student account");
     }
+    return data;
   } catch (err: any) {
-    console.warn("Cloudinary upload notice, using instant local reader:", err?.message);
+    if (err.name === "TypeError" || err.message?.includes("fetch")) {
+      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.");
+    }
+    throw err;
   }
+}
 
-  // Instant FileReader fallback (completes in 0-10ms)
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      resolve({
-        public_id: "cld_instant_" + Date.now(),
-        secure_url: reader.result as string,
-        format: file.name.split(".").pop() || "pdf",
-        bytes: file.size,
-        resource_type: isImage ? "image" : "raw",
-      });
-    };
-    reader.onerror = () => {
-      resolve({
-        public_id: "cld_blob_" + Date.now(),
-        secure_url: URL.createObjectURL(file),
-        format: file.name.split(".").pop() || "pdf",
-        bytes: file.size,
-        resource_type: isImage ? "image" : "raw",
-      });
-    };
-    reader.readAsDataURL(file);
+export async function createTeacherAccount(payload: {
+  teacherIdentifier: string;
+  name: string;
+  department?: string;
+  designation?: string;
+  departmentId?: string;
+}) {
+  try {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : localStorage.getItem("vibhaag-token");
+    const res = await fetch(`${API_BASE}/admin/users/teacher`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to create teacher account");
+    }
+    return data;
+  } catch (err: any) {
+    if (err.name === "TypeError" || err.message?.includes("fetch")) {
+      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.");
+    }
+    throw err;
+  }
+}
+
+// ----------------------------------------------------
+// ADMIN MODULE BACKEND API HELPERS (ZERO TRUST SERVER-SIDE AUTH)
+// ----------------------------------------------------
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken(true) : localStorage.getItem("vibhaag-token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export async function fetchAdminOverview() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/overview`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch admin overview metrics");
+  }
+  return data;
+}
+
+export async function fetchAdminBranches() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch branches");
+  }
+  return data;
+}
+
+export async function createBranch(payload: { name: string; code: string; description?: string }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create branch");
+  }
+  return data;
+}
+
+export async function updateBranch(id: string, payload: { name: string; code: string; description?: string }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update branch");
+  }
+  return data;
+}
+
+export async function deleteBranch(id: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/branches/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to delete branch");
+  }
+  return data;
+}
+
+export async function fetchAdminStudents() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/students`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch students");
+  }
+  return data;
+}
+
+export async function updateStudent(id: string, payload: { name: string; branch?: string; semester?: string | number }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/students/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update student");
+  }
+  return data;
+}
+
+export async function deleteStudent(id: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/students/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to delete student");
+  }
+  return data;
+}
+
+export async function fetchAdminTeachers() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/teachers`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch teachers");
+  }
+  return data;
+}
+
+export async function updateTeacher(id: string, payload: { name: string; department?: string; designation?: string }) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/teachers/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update teacher");
+  }
+  return data;
+}
+
+export async function deleteTeacher(id: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/teachers/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader },
   });
 }
-
-export type LibraryMaterial = {
-  _id: string;
-  title: string;
-  resourceType: "Notes" | "Book" | "Question Paper" | "Image" | "Reference" | "Slides";
-  department: string;
-  course: string;
-  description: string;
-  fileUrl: string;
-  cloudinaryId: string;
-  fileType: string;
-  fileSize: number;
-  uploadedBy: string;
-  uploadedByRole: string;
-  createdAt: string;
-};
-
-const CUSTOM_STORAGE_KEY = "vibhaag-custom-library-materials";
-
-function getStoredLocalMaterials(): LibraryMaterial[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
+export async function toggleUserStatus(uid: string, status: "active" | "inactive") {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/users/${uid}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update account status");
   }
+  return data;
 }
-
-function saveStoredLocalMaterial(item: LibraryMaterial) {
-  try {
-    const existing = getStoredLocalMaterials();
-    const filtered = existing.filter((m) => m._id !== item._id);
-    localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify([item, ...filtered]));
-  } catch (e) {
-    console.warn("localStorage save notice:", e);
-  }
-}
-
-export async function createLibraryMaterial(payload: {
-  title: string;
-  resourceType: "Notes" | "Book" | "Question Paper" | "Image" | "Reference" | "Slides";
-  department: string;
-  course: string;
-  description: string;
-  file: File;
-  uploadedBy: string;
-  uploadedByRole: string;
-  customCloudName?: string;
-}): Promise<LibraryMaterial> {
-  const cloudinaryData = await uploadToCloudinary(payload.file, payload.customCloudName);
-
-  const docData = {
-    title: payload.title,
-    resourceType: payload.resourceType,
-    department: payload.department,
-    course: payload.course,
-    description: payload.description,
-    fileUrl: cloudinaryData.secure_url,
-    cloudinaryId: cloudinaryData.public_id,
-    fileType: cloudinaryData.format || payload.file.name.split(".").pop() || "pdf",
-    fileSize: payload.file.size,
-    uploadedBy: payload.uploadedBy,
-    uploadedByRole: payload.uploadedByRole,
-    createdAt: new Date().toISOString(),
-  };
-
-  let newMaterial: LibraryMaterial;
-  try {
-    const docRef = await addDoc(collection(db, "library-materials"), docData);
-    newMaterial = { _id: docRef.id, ...docData };
-  } catch (error) {
-    console.warn("Firestore save fallback notice:", error);
-    newMaterial = { _id: "mat-" + Date.now(), ...docData };
-  }
-
-  saveStoredLocalMaterial(newMaterial);
-  return newMaterial;
-}
-
-export async function fetchLibraryMaterials(): Promise<LibraryMaterial[]> {
-  const firestoreDocs = await getCollectionDocs<LibraryMaterial>("library-materials", [
-    {
-      _id: "m1",
-      title: "Data Structures & Algorithms Comprehensive Lecture Notes",
-      resourceType: "Notes",
-      department: "Computer Science",
-      course: "CS201 - Data Structures",
-      description: "Complete module notes covering Arrays, Trees, Graphs & Dynamic Programming.",
-      fileUrl: "https://images.unsplash.com/photo-1532012197267-da84d127e765?auto=format&fit=crop&w=800&q=80",
-      cloudinaryId: "dsa_notes_v1",
-      fileType: "pdf",
-      fileSize: 2450000,
-      uploadedBy: "Dr. Ananya Roy",
-      uploadedByRole: "faculty",
-      createdAt: "2026-09-02T10:00:00Z",
-    },
-    {
-      _id: "m2",
-      title: "Operating Systems Process & Memory Management Reference Book",
-      resourceType: "Book",
-      department: "Computer Science",
-      course: "CS304 - Operating Systems",
-      description: "Recommended reference guide for virtual memory, page replacement algorithms, and deadlocks.",
-      fileUrl: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80",
-      cloudinaryId: "os_book_v2",
-      fileType: "pdf",
-      fileSize: 8500000,
-      uploadedBy: "Prof. Vikram Patel",
-      uploadedByRole: "faculty",
-      createdAt: "2026-09-03T14:20:00Z",
-    },
-    {
-      _id: "m3",
-      title: "Web Development React 19 & TypeScript Architecture Diagram",
-      resourceType: "Image",
-      department: "Computer Science",
-      course: "CS302 - Web Development",
-      description: "High-resolution diagram illustrating modern frontend state management & component hierarchy.",
-      fileUrl: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
-      cloudinaryId: "web_arch_img",
-      fileType: "png",
-      fileSize: 1200000,
-      uploadedBy: "Dr. Ananya Roy",
-      uploadedByRole: "faculty",
-      createdAt: "2026-09-04T09:15:00Z",
-    },
-    {
-      _id: "m4",
-      title: "DBMS Mid-Term Previous Year Question Paper",
-      resourceType: "Question Paper",
-      department: "Computer Science",
-      course: "CS204 - DBMS",
-      description: "Solved past papers focusing on SQL queries, normalization, and indexing techniques.",
-      fileUrl: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=800&q=80",
-      cloudinaryId: "dbms_midterm_paper",
-      fileType: "pdf",
-      fileSize: 3100000,
-      uploadedBy: "Prof. Suresh Nair",
-      uploadedByRole: "faculty",
-      createdAt: "2026-09-04T16:00:00Z",
-    },
-  ]);
-
-  const localDocs = getStoredLocalMaterials();
-  const map = new Map<string, LibraryMaterial>();
-
-  localDocs.forEach((doc) => map.set(doc._id, doc));
-  firestoreDocs.forEach((doc) => map.set(doc._id, doc));
-
-  return Array.from(map.values()).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-}
-
-
-
