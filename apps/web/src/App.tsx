@@ -5,10 +5,15 @@ import {
   CalendarDays,
   Grid,
   Layers,
+  Library,
   LogOut,
   Megaphone,
   ShieldCheck,
   Users,
+  BookOpen,
+  MessageSquare,
+  School,
+  FileText,
 } from "lucide-react";
 
 import { fetchAuthStatus, fetchMe, login, logout, bootstrapAdmin } from "./lib/api";
@@ -27,6 +32,11 @@ import StudentFeedbackPage from "./pages/StudentFeedbackPage";
 import StudentHomePage from "./pages/StudentHomePage";
 import StudentLeavePage from "./pages/StudentLeavePage";
 import StudentSchedulePage from "./pages/StudentSchedulePage";
+import FacultyLeavePage from "./pages/FacultyLeavePage";
+import FacultyClassroomPage from "./pages/FacultyClassroomPage";
+import FacultyLibraryPage from "./pages/FacultyLibraryPage";
+import FacultyAISummarizerPage from "./pages/FacultyAISummarizerPage";
+import FacultyAcademicEventsPage from "./pages/FacultyAcademicEventsPage";
 
 // ── Admin nav
 const adminNavItems = [
@@ -45,6 +55,11 @@ const facultyNavItems = [
   { to: "/sessions", label: "Timetable", icon: CalendarDays },
   { to: "/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/ffcs", label: "FFCS", icon: Grid },
+  { to: "/faculty/leave", label: "Leave", icon: FileText },
+  { to: "/faculty/classroom", label: "Classroom", icon: School },
+  { to: "/faculty/library", label: "Library", icon: Library },
+  { to: "/faculty/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
+  { to: "/faculty/events", label: "Academic Events", icon: BookOpen },
 ];
 
 // ── Student nav
@@ -454,6 +469,11 @@ export default function App() {
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/attendance" element={<AttendancePage />} />
             <Route path="/ffcs" element={<FfcsFacultyPage />} />
+            <Route path="/faculty/leave" element={<FacultyLeavePage />} />
+            <Route path="/faculty/classroom" element={<FacultyClassroomPage />} />
+            <Route path="/faculty/library" element={<FacultyLibraryPage />} />
+            <Route path="/faculty/ai-summarizer" element={<FacultyAISummarizerPage />} />
+            <Route path="/faculty/events" element={<FacultyAcademicEventsPage />} />
           </Routes>
         </AppShell>
       );
