@@ -229,14 +229,14 @@ async function getCollectionDocs<T>(collectionName: string, initialSeedData: T[]
 export async function fetchAnalytics() {
   const sessions = await fetchSessions();
   const users = await fetchUsers();
-  const faculty = users.filter((u) => u.role === "faculty");
-  const students = users.filter((u) => u.role === "student");
+  const faculty = users.filter((u: any) => u.role === "faculty" || u.role === "teacher");
+  const students = users.filter((u: any) => u.role === "student");
   const leaveRequests = await fetchLeaveRequests();
-  const pendingLeaves = leaveRequests.filter((l) => l.status === "pending").length;
+  const pendingLeaves = leaveRequests.filter((l: any) => l.status === "pending").length;
   const feedback = await fetchFeedback();
   const feedbackAvg =
     feedback.length > 0
-      ? Number((feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length).toFixed(1))
+      ? Number((feedback.reduce((sum: number, f: any) => sum + (f.rating || 0), 0) / feedback.length).toFixed(1))
       : 4.8;
 
   return {
@@ -930,6 +930,7 @@ export type LibraryMaterial = {
   fileUrl: string;
   fileName: string;
   fileSize: number;
+  fileType?: string;
   createdAt: string;
 };
 
