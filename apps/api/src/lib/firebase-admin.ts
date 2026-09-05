@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, cert, App } from "firebase-admin/app";
 import { getAuth, Auth, UserRecord } from "firebase-admin/auth";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { getStorage, Storage } from "firebase-admin/storage";
+import { getDatabase, Database } from "firebase-admin/database";
 import { config } from "../config";
 
 export function isFirebaseAdminConfigured(): boolean {
@@ -18,13 +19,13 @@ export function isFirebaseAdminConfigured(): boolean {
   return hasCert || hasCustomEmulator;
 }
 
-
 function initFirebaseAdmin(): App {
   if (getApps().length > 0) {
     return getApp();
   }
 
   const { firebaseProjectId, firebaseClientEmail, firebasePrivateKey } = config;
+  const databaseURL = process.env.FIREBASE_DATABASE_URL || `https://${firebaseProjectId}-default-rtdb.firebaseio.com`;
 
   if (
     firebaseClientEmail &&
@@ -39,6 +40,7 @@ function initFirebaseAdmin(): App {
           privateKey: firebasePrivateKey,
         }),
         storageBucket: `${firebaseProjectId}.firebasestorage.app`,
+        databaseURL,
       });
     } catch (err: unknown) {
       console.warn(
@@ -55,15 +57,53 @@ function initFirebaseAdmin(): App {
   return initializeApp({
     projectId: firebaseProjectId,
     storageBucket: `${firebaseProjectId}.firebasestorage.app`,
+    databaseURL,
   });
 }
-
-
 
 export const adminApp: App = initFirebaseAdmin();
 export const adminAuth: Auth = getAuth(adminApp);
 export const adminDb: Firestore = getFirestore(adminApp);
 export const adminStorage: Storage = getStorage(adminApp);
+export const adminRtdb: Database = getDatabase(adminApp);
+
+export async function syncFFCSOfferingLiveState(windowId: string, offeringId: string): Promise<void> {
+  try {
+    const offeringDoc = await adminDb.collection("ffcsOfferings").doc(offeringId).get();
+    if (!offeringDoc.exists) return;
+    const data = offeringDoc.data();
+    const capacity = Number(data?.capacity ?? 60);
+    const seatsFilled = Number(data?.seatsFilled ?? 0);
+    const seatsRemaining = Math.max(0, capacity - seatsFilled);
+    const status = seatsRemaining <= 0 ? "full" : (data?.status || "open");
+
+    await adminRtdb.ref(`ffcsLive/${windowId}/offerings/${offeringId}`).set({
+      capacity,
+      seatsFilled,
+      seatsRemaining,
+      status,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err: unknown) {
+    console.warn("[Firebase Admin] RTDB sync live state notice:", err instanceof Error ? err.message : err);
+  }
+}
+
+export async function rebuildFFCSLiveState(windowId: string): Promise<void> {
+  try {
+    const windowDoc = await adminDb.collection("ffcsWindows").doc(windowId).get();
+    const winStatus = windowDoc.exists ? (windowDoc.data()?.status || "scheduled") : "closed";
+
+    await adminRtdb.ref(`ffcsLive/${windowId}/status`).set(winStatus);
+
+    const offeringsSnap = await adminDb.collection("ffcsOfferings").where("windowId", "==", windowId).get();
+    for (const doc of offeringsSnap.docs) {
+      await syncFFCSOfferingLiveState(windowId, doc.id);
+    }
+  } catch (err: unknown) {
+    console.warn("[Firebase Admin] RTDB rebuild live state notice:", err instanceof Error ? err.message : err);
+  }
+}
 
 export async function bootstrapAdminAccount(): Promise<UserRecord | null> {
   if (!isFirebaseAdminConfigured()) {
@@ -115,4 +155,5 @@ export async function bootstrapAdminAccount(): Promise<UserRecord | null> {
     return null;
   }
 }
+
 

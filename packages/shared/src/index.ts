@@ -106,3 +106,87 @@ export const AuthResponseSchema = z.object({
   user: UserSchema,
 });
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;
+
+export const TIMETABLE_SLOTS = [
+  { id: "slot-1", startTime: "08:30", endTime: "10:00", label: "Slot 1 (08:30 - 10:00)" },
+  { id: "slot-2", startTime: "10:05", endTime: "11:35", label: "Slot 2 (10:05 - 11:35)" },
+  { id: "slot-3", startTime: "11:40", endTime: "13:10", label: "Slot 3 (11:40 - 13:10)" },
+  { id: "slot-4", startTime: "13:15", endTime: "14:45", label: "Slot 4 (13:15 - 14:45)" },
+  { id: "slot-5", startTime: "14:50", endTime: "16:20", label: "Slot 5 (14:50 - 16:20)" },
+  { id: "slot-6", startTime: "16:25", endTime: "17:55", label: "Slot 6 (16:25 - 17:55)" },
+  { id: "slot-7", startTime: "18:00", endTime: "19:30", label: "Slot 7 (18:00 - 19:30)" },
+] as const;
+
+export type TimetableSlot = (typeof TIMETABLE_SLOTS)[number];
+
+export const FFCSWindowStatusSchema = z.enum(["scheduled", "open", "closed"]);
+export type FFCSWindowStatus = z.infer<typeof FFCSWindowStatusSchema>;
+
+export const FFCSWindowSchema = z.object({
+  id: z.string(),
+  semester: z.union([z.number(), z.string()]),
+  academicYear: z.string(),
+  startDateTime: z.string(),
+  endDateTime: z.string(),
+  status: FFCSWindowStatusSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type FFCSWindow = z.infer<typeof FFCSWindowSchema>;
+
+export const FFCSOfferingSchema = z.object({
+  id: z.string(),
+  windowId: z.string(),
+  semester: z.union([z.number(), z.string()]),
+  subjectId: z.string(),
+  subjectName: z.string(),
+  teacherId: z.string(),
+  teacherName: z.string(),
+  day: z.string(),
+  slotId: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  capacity: z.number().min(1),
+  seatsFilled: z.number().min(0),
+  status: z.enum(["active", "inactive"]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type FFCSOffering = z.infer<typeof FFCSOfferingSchema>;
+
+export const FFCSApplicationStatusSchema = z.enum([
+  "pending",
+  "allocated",
+  "rejected",
+  "waitlisted",
+  "cancelled",
+]);
+export type FFCSApplicationStatus = z.infer<typeof FFCSApplicationStatusSchema>;
+
+export const FFCSApplicationSchema = z.object({
+  id: z.string(),
+  windowId: z.string(),
+  studentId: z.string(),
+  studentName: z.string(),
+  semester: z.union([z.number(), z.string()]),
+  subjectId: z.string(),
+  offeringId: z.string(),
+  cgpaSnapshot: z.number().nullable(),
+  submittedAt: z.string(),
+  status: FFCSApplicationStatusSchema,
+});
+export type FFCSApplication = z.infer<typeof FFCSApplicationSchema>;
+
+export const FFCSAllocationSchema = z.object({
+  id: z.string(),
+  windowId: z.string(),
+  studentId: z.string(),
+  subjectId: z.string(),
+  offeringId: z.string(),
+  priorityType: z.enum(["sem1_fcfs", "sem2_cgpa"]),
+  cgpaSnapshot: z.number().nullable(),
+  allocatedAt: z.string(),
+});
+export type FFCSAllocation = z.infer<typeof FFCSAllocationSchema>;
+
+

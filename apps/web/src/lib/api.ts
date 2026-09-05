@@ -229,14 +229,14 @@ async function getCollectionDocs<T>(collectionName: string, initialSeedData: T[]
 export async function fetchAnalytics() {
   const sessions = await fetchSessions();
   const users = await fetchUsers();
-  const faculty = users.filter((u) => u.role === "faculty");
-  const students = users.filter((u) => u.role === "student");
+  const faculty = users.filter((u: any) => u.role === "faculty" || u.role === "teacher");
+  const students = users.filter((u: any) => u.role === "student");
   const leaveRequests = await fetchLeaveRequests();
-  const pendingLeaves = leaveRequests.filter((l) => l.status === "pending").length;
+  const pendingLeaves = leaveRequests.filter((l: any) => l.status === "pending").length;
   const feedback = await fetchFeedback();
   const feedbackAvg =
     feedback.length > 0
-      ? Number((feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length).toFixed(1))
+      ? Number((feedback.reduce((sum: number, f: any) => sum + (f.rating || 0), 0) / feedback.length).toFixed(1))
       : 4.8;
 
   return {
@@ -918,33 +918,89 @@ export async function toggleUserStatus(uid: string, status: "active" | "inactive
 // LIBRARY / DIGITAL MATERIALS
 // ----------------------------------------------------
 
+import {
+  saveFileToIndexedDB,
+  getFileUrlFromIndexedDB,
+  deleteFileFromIndexedDB,
+} from "./idb";
+
 export type LibraryMaterial = {
+  _id?: string;
   id: string;
   title: string;
   resourceType: "Notes" | "Book" | "Question Paper" | "Image" | "Reference" | "Slides";
   department: string;
   course: string;
   description: string;
+  genre?: string;
   uploadedBy: string;
   uploadedByRole: string;
   fileUrl: string;
   fileName: string;
   fileSize: number;
+  fileType?: string;
   createdAt: string;
 };
 
-let _memoryLibrary: LibraryMaterial[] = [];
+async function getImageKitSignature(token: string, expire: number, privateKey: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(privateKey);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const signatureBuffer = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    encoder.encode(token + expire.toString())
+  );
+  const hashArray = Array.from(new Uint8Array(signatureBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export async function fetchLibraryMaterials(): Promise<LibraryMaterial[]> {
+  const list: LibraryMaterial[] = [];
   try {
     const snap = await getDocs(collection(db, "library-materials"));
     if (!snap.empty) {
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LibraryMaterial[];
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        list.push({ _id: d.id, id: d.id, ...data } as LibraryMaterial);
+      });
     }
-  } catch {
-    /* fallback to in-memory */
+  } catch (err) {
+    console.warn("Firestore fetch library notice:", err);
   }
-  return _memoryLibrary;
+
+  // Merge with localStorage custom items
+  try {
+    const raw = localStorage.getItem("vibhaag-custom-library-materials");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      stored.forEach((item: LibraryMaterial) => {
+        const itemKey = item._id || item.id;
+        if (!list.some((m) => (m._id || m.id) === itemKey)) {
+          list.push(item);
+        }
+      });
+    }
+  } catch { }
+
+  // Resolve IndexedDB local binary URLs for offline/cached materials
+  for (const mat of list) {
+    const matKey = mat._id || mat.id;
+    if (!mat.fileUrl || mat.fileUrl.startsWith("idb://") || mat.fileUrl.includes("unsplash.com")) {
+      const idbUrl = await getFileUrlFromIndexedDB(matKey);
+      if (idbUrl) {
+        mat.fileUrl = idbUrl;
+      }
+    }
+  }
+
+  return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 }
 
 export async function createLibraryMaterial(payload: {
@@ -953,124 +1009,388 @@ export async function createLibraryMaterial(payload: {
   department: string;
   course: string;
   description: string;
+  genre?: string;
   file: File;
   uploadedBy: string;
   uploadedByRole: string;
 }): Promise<LibraryMaterial> {
-  let fileUrl = "";
-  let fileName = payload.file.name;
-  let fileSize = payload.file.size;
+  const matId = doc(collection(db, "library-materials")).id;
+  const fileName = payload.file.name;
+  const fileSize = payload.file.size;
 
-  // Try Cloudinary unsigned upload (preset: "ml_default" is common; adjust if needed)
-  try {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "demo";
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
-    const formData = new FormData();
-    formData.append("file", payload.file);
-    formData.append("upload_preset", uploadPreset);
-    const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-      method: "POST",
-      body: formData,
-    });
-    if (resp.ok) {
-      const result = await resp.json();
-      fileUrl = result.secure_url || result.url || "";
-      fileName = result.original_filename || fileName;
-      fileSize = result.bytes || fileSize;
-    }
-  } catch {
-    /* If Cloudinary is not configured, use a local object URL as fallback */
-    fileUrl = URL.createObjectURL(payload.file);
-  }
+  await saveFileToIndexedDB(matId, payload.file);
+  const localUrl = (await getFileUrlFromIndexedDB(matId)) || `idb://${matId}`;
 
-  const newMaterial: LibraryMaterial = {
-    id: `lib-${Date.now()}`,
+  const docData = {
     title: payload.title,
     resourceType: payload.resourceType,
     department: payload.department,
     course: payload.course,
-    description: payload.description,
-    uploadedBy: payload.uploadedBy,
-    uploadedByRole: payload.uploadedByRole,
-    fileUrl,
+    description: payload.description || "",
+    genre: payload.genre || "Computer Science",
+    uploadedBy: payload.uploadedBy || "Faculty",
+    uploadedByRole: payload.uploadedByRole || "faculty",
+    fileUrl: localUrl,
     fileName,
     fileSize,
     createdAt: new Date().toISOString(),
   };
 
-  _memoryLibrary = [newMaterial, ..._memoryLibrary];
+  const newMaterial: LibraryMaterial = { _id: matId, id: matId, ...docData };
 
   try {
-    const docRef = await addDoc(collection(db, "library-materials"), newMaterial);
-    return { ...newMaterial, id: docRef.id };
-  } catch {
-    /* offline — return in-memory record */
+    await setDoc(doc(db, "library-materials", matId), docData);
+  } catch (err) {
+    console.warn("Firestore setDoc notice:", err);
   }
+
+  try {
+    const raw = localStorage.getItem("vibhaag-custom-library-materials");
+    const existing = raw ? JSON.parse(raw) : [];
+    localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify([newMaterial, ...existing]));
+  } catch {}
+
+  (async () => {
+    try {
+      const publicKey =
+        import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY || "public_tLQ8M3XofX7TqrOmYu8E5H1uDlI=";
+      const privateKey =
+        import.meta.env.VITE_IMAGEKIT_PRIVATE_KEY || "private_zYKMkYEh5PMQ+HexRLXx679lP/M=";
+
+      let token = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now();
+      let expire = Math.floor(Date.now() / 1000) + 1800;
+      let signature = "";
+
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+        const authResp = await fetch(`${apiBaseUrl}/imagekit/auth`);
+        if (authResp.ok) {
+          const authData = await authResp.json();
+          token = authData.token || token;
+          expire = authData.expire || expire;
+          signature = authData.signature || "";
+        }
+      } catch (authErr) {
+        console.warn("ImageKit backend auth fetch notice:", authErr);
+      }
+
+      if (!signature) {
+        signature = await getImageKitSignature(token, expire, privateKey);
+      }
+
+      const formData = new FormData();
+      formData.append("file", payload.file);
+      formData.append("fileName", payload.file.name);
+      formData.append("publicKey", publicKey);
+      formData.append("signature", signature);
+      formData.append("expire", expire.toString());
+      formData.append("token", token);
+      formData.append("useUniqueFileName", "true");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      let remoteUrl = "";
+      try {
+        const resp = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          const result = await resp.json();
+          remoteUrl = result.url || result.secure_url || "";
+        }
+      } catch (uploadErr) {
+        clearTimeout(timeoutId);
+        console.warn("ImageKit upload request failed:", uploadErr);
+      }
+
+      if (remoteUrl) {
+        try {
+          await updateDoc(doc(db, "library-materials", matId), { fileUrl: remoteUrl });
+        } catch (dbErr) {
+          console.warn("Firestore updateDoc ImageKit URL notice:", dbErr);
+        }
+
+        try {
+          const raw = localStorage.getItem("vibhaag-custom-library-materials");
+          if (raw) {
+            const stored = JSON.parse(raw);
+            const updated = stored.map((item: LibraryMaterial) =>
+              (item._id || item.id) === matId ? { ...item, fileUrl: remoteUrl } : item
+            );
+            localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(updated));
+          }
+        } catch {}
+      }
+    } catch (bgErr) {
+      console.warn("Background cloud upload notice:", bgErr);
+    }
+  })();
 
   return newMaterial;
 }
 
-export async function deleteLibraryMaterial(id: string) {
-  if (!id) return;
-  try {
-    const { deleteDoc, doc } = await import("firebase/firestore");
-    await deleteDoc(doc(db, "library-materials", id));
-  } catch (e) {
-    console.warn("Delete Firestore material notice:", e);
+export async function fetchAdminFfcsWindows() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch FFCS windows");
   }
-
-  // Delete from IndexedDB
-  await deleteFileFromIndexedDB(id);
-
-  // Delete from localStorage cache
-  try {
-    const raw = localStorage.getItem("vibhaag-custom-library-materials");
-    if (raw) {
-      const existing: LibraryMaterial[] = JSON.parse(raw);
-      const filtered = existing.filter((item) => (item._id || item.id) !== id);
-      localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(filtered));
-    }
-  } catch {}
+  return data;
 }
 
-export type AISummary = {
-  _id: string;
-  inputText: string;
-  summary: string;
-  createdAt: string;
-};
-
-export async function createAISummary(payload: { inputText: string; summary: string }): Promise<AISummary> {
-  const docData = { ...payload, createdAt: new Date().toISOString() };
-  try {
-    const docRef = await addDoc(collection(db, "ai-summaries"), docData);
-    return { _id: docRef.id, ...docData };
-  } catch (e) {
-    return { _id: "summary-" + Date.now(), ...docData };
+export async function createFfcsWindow(payload: {
+  semester: number | string;
+  academicYear: string;
+  startDateTime: string;
+  endDateTime: string;
+  status?: "scheduled" | "open" | "closed";
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create FFCS window");
   }
+  return data;
 }
 
-export async function fetchAISummaries(): Promise<AISummary[]> {
-  return getCollectionDocs<AISummary>("ai-summaries", []);
-}
-
-export type AcademicEvent = {
-  _id: string;
-  title: string;
-  date: string;
-  description: string;
-};
-
-export async function createAcademicEvent(payload: { title: string; date: string; description: string }): Promise<AcademicEvent> {
-  try {
-    const docRef = await addDoc(collection(db, "academic-events"), payload);
-    return { _id: docRef.id, ...payload };
-  } catch (e) {
-    return { _id: "evt-" + Date.now(), ...payload };
+export async function updateFfcsWindow(id: string, payload: Partial<{
+  status: "scheduled" | "open" | "closed";
+  startDateTime: string;
+  endDateTime: string;
+  semester: number | string;
+  academicYear: string;
+}>) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update FFCS window");
   }
+  return data;
 }
 
-export async function fetchAcademicEvents(): Promise<AcademicEvent[]> {
-  return getCollectionDocs<AcademicEvent>("academic-events", []);
+export async function fetchAdminFfcsOfferings(params?: { windowId?: string; semester?: string }) {
+  const authHeader = await getAuthHeader();
+  const query = new URLSearchParams();
+  if (params?.windowId) query.append("windowId", params.windowId);
+  if (params?.semester) query.append("semester", params.semester);
+
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings?${query.toString()}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch course offerings");
+  }
+  return data;
+}
+
+export async function createFfcsOffering(payload: {
+  windowId: string;
+  semester: number | string;
+  subjectId: string;
+  subjectName: string;
+  teacherId: string;
+  teacherName: string;
+  day: string;
+  slotId: string;
+  capacity: number;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create course offering");
+  }
+  return data;
+}
+
+export async function updateFfcsOffering(id: string, payload: Partial<{
+  capacity: number;
+  status: "active" | "inactive";
+  day: string;
+  slotId: string;
+}>) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update offering");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsApplications(windowId?: string) {
+  const authHeader = await getAuthHeader();
+  const query = windowId ? `?windowId=${windowId}` : "";
+  const res = await fetch(`${API_BASE}/admin/ffcs/applications${query}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch applications");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsAllocations(windowId?: string) {
+  const authHeader = await getAuthHeader();
+  const query = windowId ? `?windowId=${windowId}` : "";
+  const res = await fetch(`${API_BASE}/admin/ffcs/allocations${query}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch allocations");
+  }
+  return data;
+}
+
+export async function syncLiveFfcsState(windowId: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${windowId}/sync-live`, {
+    method: "POST",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to sync live state");
+  }
+  return data;
+}
+
+export async function allocateFfcsWindow(windowId: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${windowId}/allocate`, {
+    method: "POST",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to run allocation engine");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsStatus() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/current`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student FFCS status");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsOfferings() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/offerings`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student offerings");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsApplications() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/applications`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student applications");
+  }
+  return data;
+}
+
+export async function submitStudentFfcsApplication(payload: {
+  windowId: string;
+  offeringId: string;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/applications`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to submit course choice");
+  }
+  return data;
+}
+
+export async function fetchTeacherFfcsApplications() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/ffcs/applications`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch teacher applications");
+  }
+  return data;
+}
+
+export async function updateTeacherFfcsApplicationStatus(id: string, status: "allocated" | "rejected" | "pending") {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/ffcs/applications/${id}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update application status");
+  }
+  return data;
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Download, FileText, Filter, Image as ImageIcon, Plus, Search, UploadCloud } from "lucide-react";
-import { createLibraryMaterial, fetchLibraryMaterials, LibraryMaterial } from "../lib/api";
+import { BookOpen, Download, FileText, Filter, Image as ImageIcon, Plus, Search, Trash2, UploadCloud } from "lucide-react";
+import { createLibraryMaterial, deleteLibraryMaterial, fetchLibraryMaterials, LibraryMaterial } from "../lib/api";
 
 type Props = {
   userRole?: string;
@@ -54,6 +54,17 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
     };
   }, []);
 
+  const handleDelete = async (id?: string) => {
+    if (!id) return;
+    if (!confirm("Are you sure you want to delete this study material?")) return;
+    try {
+      await deleteLibraryMaterial(id);
+      setMaterials((prev) => prev.filter((m) => (m._id || m.id) !== id));
+    } catch (err) {
+      console.error("Failed to delete material:", err);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
@@ -100,10 +111,13 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
 
   const filteredMaterials = useMemo(() => {
     return materials.filter((item) => {
+      const title = item?.title || "";
+      const course = item?.course || "";
+      const uploadedBy = item?.uploadedBy || "";
       const matchesSearch =
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.course.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.uploadedBy.toLowerCase().includes(searchQuery.toLowerCase());
+        title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        course.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        uploadedBy.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = selectedType === "All" || item.resourceType === selectedType;
       return matchesSearch && matchesType;
     });
@@ -386,20 +400,25 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
-            {filteredMaterials.map((item) => {
+            {filteredMaterials.map((item, index) => {
               const badgeStyle = getTypeBadgeColor(item.resourceType);
+              const rawFileType =
+                item.fileType ||
+                (item.fileName && item.fileName.includes(".") ? item.fileName.split(".").pop() : "") ||
+                "FILE";
+              const fileTypeExt = rawFileType.toUpperCase();
               return (
-                <div key={item._id} className="card fade-in" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div key={item._id || item.id || index} className="card fade-in" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                       <span
                         className="badge"
                         style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.color, margin: 0, fontWeight: 600 }}
                       >
-                        {item.resourceType}
+                        {item.resourceType || "Resource"}
                       </span>
                       <span style={{ fontSize: "11px", fontWeight: 700, background: "#f3f4f6", padding: "2px 8px", borderRadius: "4px", color: "#4b5563" }}>
-                        .{item.fileType.toUpperCase()}
+                        .{fileTypeExt}
                       </span>
                     </div>
 
@@ -423,25 +442,68 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
                     </div>
 
                     <div style={{ display: "flex", gap: "8px" }}>
-                      <a
-                        href={item.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="button"
-                        style={{
-                          flex: 1,
-                          textAlign: "center",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "6px",
-                          padding: "6px 12px",
-                          fontSize: "13px",
-                          textDecoration: "none",
-                        }}
-                      >
-                        <Download size={14} /> Open / Download File
-                      </a>
+                      {item.fileUrl ? (
+                        <a
+                          href={item.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={item.fileName || item.title || "document"}
+                          className="button"
+                          style={{
+                            flex: 1,
+                            textAlign: "center",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            padding: "6px 12px",
+                            fontSize: "13px",
+                            textDecoration: "none",
+                          }}
+                        >
+                          <Download size={14} /> Open / Download File
+                        </a>
+                      ) : (
+                        <button
+                          disabled
+                          className="button"
+                          style={{
+                            flex: 1,
+                            opacity: 0.6,
+                            cursor: "not-allowed",
+                            textAlign: "center",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            padding: "6px 12px",
+                            fontSize: "13px",
+                          }}
+                          title="File content was missing during initial upload"
+                        >
+                          <Download size={14} /> File Link Missing
+                        </button>
+                      )}
+
+                      {(userRole === "faculty" || userRole === "admin") && (
+                        <button
+                          onClick={() => handleDelete(item._id || item.id)}
+                          title="Delete Material"
+                          style={{
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 10px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
