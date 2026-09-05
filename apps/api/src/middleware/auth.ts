@@ -69,7 +69,7 @@ export async function authenticateToken(
     next();
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Invalid token";
-    
+
     if (errorMessage.includes("expired")) {
       res.status(401).json({ error: "Unauthorized: Firebase ID token has expired" });
       return;

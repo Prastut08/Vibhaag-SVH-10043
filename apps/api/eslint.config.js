@@ -17,7 +17,8 @@ export default [
         expect: "readonly",
         test: "readonly",
         beforeAll: "readonly",
-        afterAll: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
       },
     },
     plugins: {
@@ -25,7 +26,6 @@ export default [
       "@typescript-eslint": tseslint,
     },
     rules: {
-      "import/order": ["warn", { "newlines-between": "always" }],
       "no-unused-vars": "off",
     },
   },

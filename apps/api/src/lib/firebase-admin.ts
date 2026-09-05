@@ -4,6 +4,21 @@ import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { getStorage, Storage } from "firebase-admin/storage";
 import { config } from "../config";
 
+export function isFirebaseAdminConfigured(): boolean {
+  const { firebaseClientEmail, firebasePrivateKey } = config;
+  const hasCert = Boolean(
+    firebaseClientEmail &&
+      firebasePrivateKey &&
+      firebasePrivateKey.includes("BEGIN PRIVATE KEY")
+  );
+  const hasCustomEmulator = Boolean(
+    (process.env.FIRESTORE_EMULATOR_HOST && process.env.FIRESTORE_EMULATOR_HOST !== "127.0.0.1:8080") ||
+      (process.env.FIREBASE_AUTH_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST !== "127.0.0.1:9099")
+  );
+  return hasCert || hasCustomEmulator;
+}
+
+
 function initFirebaseAdmin(): App {
   if (getApps().length > 0) {
     return getApp();
@@ -33,23 +48,29 @@ function initFirebaseAdmin(): App {
     }
   }
 
+  if (!process.env.FIRESTORE_EMULATOR_HOST && !config.firebaseClientEmail && !config.firebasePrivateKey) {
+    process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+  }
+
   return initializeApp({
     projectId: firebaseProjectId,
     storageBucket: `${firebaseProjectId}.firebasestorage.app`,
   });
 }
 
+
+
 export const adminApp: App = initFirebaseAdmin();
 export const adminAuth: Auth = getAuth(adminApp);
 export const adminDb: Firestore = getFirestore(adminApp);
 export const adminStorage: Storage = getStorage(adminApp);
 
-/**
- * Bootstraps the initial Campus Hub admin account if it does not already exist.
- * Uses config.adminEmail and config.adminPassword.
- * Assigns custom claim { role: "admin" } and creates Firestore profiles at admins/{uid} and users/{uid}.
- */
 export async function bootstrapAdminAccount(): Promise<UserRecord | null> {
+  if (!isFirebaseAdminConfigured()) {
+    console.warn("[Firebase Admin] Skipping admin bootstrap: FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY not set in .env");
+    return null;
+  }
+
   const email = config.adminEmail;
   const password = config.adminPassword;
 
@@ -94,3 +115,4 @@ export async function bootstrapAdminAccount(): Promise<UserRecord | null> {
     return null;
   }
 }
+
