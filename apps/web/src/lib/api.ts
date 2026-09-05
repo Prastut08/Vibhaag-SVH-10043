@@ -954,3 +954,99 @@ export async function toggleUserStatus(uid: string, status: "active" | "inactive
   }
   return data;
 }
+
+// ----------------------------------------------------
+// LIBRARY / DIGITAL MATERIALS
+// ----------------------------------------------------
+
+export type LibraryMaterial = {
+  id: string;
+  title: string;
+  resourceType: "Notes" | "Book" | "Question Paper" | "Image" | "Reference" | "Slides";
+  department: string;
+  course: string;
+  description: string;
+  uploadedBy: string;
+  uploadedByRole: string;
+  fileUrl: string;
+  fileName: string;
+  fileSize: number;
+  createdAt: string;
+};
+
+let _memoryLibrary: LibraryMaterial[] = [];
+
+export async function fetchLibraryMaterials(): Promise<LibraryMaterial[]> {
+  try {
+    const snap = await getDocs(collection(db, "library-materials"));
+    if (!snap.empty) {
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LibraryMaterial[];
+    }
+  } catch {
+    /* fallback to in-memory */
+  }
+  return _memoryLibrary;
+}
+
+export async function createLibraryMaterial(payload: {
+  title: string;
+  resourceType: LibraryMaterial["resourceType"];
+  department: string;
+  course: string;
+  description: string;
+  file: File;
+  uploadedBy: string;
+  uploadedByRole: string;
+}): Promise<LibraryMaterial> {
+  let fileUrl = "";
+  let fileName = payload.file.name;
+  let fileSize = payload.file.size;
+
+  // Try Cloudinary unsigned upload (preset: "ml_default" is common; adjust if needed)
+  try {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "demo";
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    formData.append("upload_preset", uploadPreset);
+    const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (resp.ok) {
+      const result = await resp.json();
+      fileUrl = result.secure_url || result.url || "";
+      fileName = result.original_filename || fileName;
+      fileSize = result.bytes || fileSize;
+    }
+  } catch {
+    /* If Cloudinary is not configured, use a local object URL as fallback */
+    fileUrl = URL.createObjectURL(payload.file);
+  }
+
+  const newMaterial: LibraryMaterial = {
+    id: `lib-${Date.now()}`,
+    title: payload.title,
+    resourceType: payload.resourceType,
+    department: payload.department,
+    course: payload.course,
+    description: payload.description,
+    uploadedBy: payload.uploadedBy,
+    uploadedByRole: payload.uploadedByRole,
+    fileUrl,
+    fileName,
+    fileSize,
+    createdAt: new Date().toISOString(),
+  };
+
+  _memoryLibrary = [newMaterial, ..._memoryLibrary];
+
+  try {
+    const docRef = await addDoc(collection(db, "library-materials"), newMaterial);
+    return { ...newMaterial, id: docRef.id };
+  } catch {
+    /* offline — return in-memory record */
+  }
+
+  return newMaterial;
+}
