@@ -447,3 +447,257 @@ export async function checkOut(attendanceId: string) {
     return { _id: attendanceId, status: "checked-out" };
   }
 }
+
+// ----------------------------------------------------
+// FFCS — Fully Flexible Credit System
+// ----------------------------------------------------
+
+export type FfcsConfig = {
+  semester: string;
+  classrooms: number;
+  labs: number;
+  maxClassesPerDay: number;
+  avgLeavePerMonth: number;
+  courseIds: string[];
+  specialSlots: string;
+};
+
+export type FfcsSlot = {
+  id: string;
+  courseCode: string;
+  courseName: string;
+  facultyName: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  batchName: string;
+  type: "lecture" | "lab";
+  isElective: boolean;
+  credits: number;
+  conflict: boolean;
+  conflictReason?: string;
+};
+
+export type FfcsTimetable = {
+  id: string;
+  configId: string;
+  semester: string;
+  status: "draft" | "approved";
+  slots: FfcsSlot[];
+  generatedAt: string;
+};
+
+const FFCS_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const FFCS_TIME_SLOTS = [
+  { start: "08:00", end: "09:00" },
+  { start: "09:30", end: "10:30" },
+  { start: "11:00", end: "12:00" },
+  { start: "14:00", end: "15:00" },
+  { start: "14:30", end: "15:30" },
+  { start: "15:00", end: "16:00" },
+  { start: "16:00", end: "17:00" },
+];
+const ROOMS = ["A101", "A102", "B201", "B202", "C301", "C302", "Lab-1", "Lab-2", "Lab-3"];
+const FACULTY_NAMES = [
+  "Dr. Ananya Roy", "Prof. Vikram Patel", "Dr. Meera Krishnan",
+  "Prof. Suresh Nair", "Dr. Pooja Gupta", "Prof. Rajesh Kumar",
+];
+const COURSE_CATALOG = [
+  { code: "CS201", name: "Data Structures & Algorithms", type: "lecture" as const, isElective: false, credits: 4 },
+  { code: "CS302", name: "Web Development", type: "lecture" as const, isElective: false, credits: 3 },
+  { code: "CS304", name: "Operating Systems", type: "lecture" as const, isElective: false, credits: 4 },
+  { code: "CS401", name: "Machine Learning", type: "lecture" as const, isElective: true, credits: 3 },
+  { code: "CS402", name: "Cloud Computing", type: "elective" as const, isElective: true, credits: 3 },
+  { code: "CS501", name: "Database Management", type: "lecture" as const, isElective: false, credits: 4 },
+  { code: "CS502", name: "Computer Networks", type: "lecture" as const, isElective: false, credits: 3 },
+  { code: "CS601", name: "Data Structures Lab", type: "lab" as const, isElective: false, credits: 2 },
+  { code: "CS602", name: "Web Dev Lab", type: "lab" as const, isElective: false, credits: 2 },
+  { code: "CS701", name: "Cybersecurity Fundamentals", type: "elective" as const, isElective: true, credits: 3 },
+];
+const BATCHES = ["CSE-2024-A", "CSE-2024-B", "CSE-2025-A", "ECE-2024-A"];
+
+/** Simple greedy scheduler — distributes courses across days, rooms, faculty */
+function runFfcsAlgorithm(config: FfcsConfig): FfcsSlot[] {
+  const slots: FfcsSlot[] = [];
+  const usedSlots = new Set<string>(); // key: day-time-room
+
+  const courses = COURSE_CATALOG.slice(0, Math.max(4, config.classrooms));
+
+  let slotIdx = 0;
+  for (const batch of BATCHES) {
+    for (const course of courses) {
+      for (let repeat = 0; repeat < (course.credits >= 4 ? 2 : 1); repeat++) {
+        // Find a free day-time-room combination
+        let placed = false;
+        for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+          const dayIdx = (slotIdx + attempt * 3) % FFCS_DAYS.length;
+          const timeIdx = (slotIdx + attempt) % FFCS_TIME_SLOTS.length;
+          const roomIdx = (slotIdx + attempt * 2) % ROOMS.length;
+          const day = FFCS_DAYS[dayIdx];
+          const time = FFCS_TIME_SLOTS[timeIdx];
+          const room = ROOMS[roomIdx];
+          const key = `${day}-${time.start}-${room}`;
+          if (!usedSlots.has(key)) {
+            usedSlots.add(key);
+            const facultyIdx = (slotIdx + attempt) % FACULTY_NAMES.length;
+            slots.push({
+              id: `ffcs-${batch}-${course.code}-${repeat}-${slotIdx}`,
+              courseCode: course.code,
+              courseName: course.name,
+              facultyName: FACULTY_NAMES[facultyIdx],
+              day,
+              startTime: time.start,
+              endTime: time.end,
+              room,
+              batchName: batch,
+              type: course.type === "elective" ? "lecture" : course.type,
+              isElective: course.isElective,
+              credits: course.credits,
+              conflict: false,
+            });
+            placed = true;
+          }
+        }
+        if (!placed) {
+          // Force-place with a conflict flag
+          const day = FFCS_DAYS[slotIdx % FFCS_DAYS.length];
+          const time = FFCS_TIME_SLOTS[slotIdx % FFCS_TIME_SLOTS.length];
+          slots.push({
+            id: `ffcs-conflict-${batch}-${course.code}-${slotIdx}`,
+            courseCode: course.code,
+            courseName: course.name,
+            facultyName: FACULTY_NAMES[slotIdx % FACULTY_NAMES.length],
+            day,
+            startTime: time.start,
+            endTime: time.end,
+            room: ROOMS[slotIdx % ROOMS.length],
+            batchName: batch,
+            type: course.type === "elective" ? "lecture" : course.type,
+            isElective: course.isElective,
+            credits: course.credits,
+            conflict: true,
+            conflictReason: "Room or faculty double-booked — manual rescheduling required.",
+          });
+        }
+        slotIdx++;
+      }
+    }
+  }
+  return slots;
+}
+
+let _cachedTimetable: FfcsTimetable | null = null;
+
+export async function saveFfcsConfig(config: FfcsConfig): Promise<{ id: string }> {
+  try {
+    const docRef = await addDoc(collection(db, "ffcs-configs"), {
+      ...config,
+      createdAt: new Date().toISOString(),
+    });
+    return { id: docRef.id };
+  } catch {
+    const id = "ffcs-cfg-" + Date.now();
+    return { id };
+  }
+}
+
+export async function generateFfcsTimetable(configId: string): Promise<FfcsSlot[]> {
+  // Fetch saved config if available, else use defaults
+  let config: FfcsConfig = {
+    semester: "Odd 2026-27",
+    classrooms: 8,
+    labs: 3,
+    maxClassesPerDay: 6,
+    avgLeavePerMonth: 2,
+    courseIds: [],
+    specialSlots: "",
+  };
+  try {
+    const docSnap = await getDoc(doc(db, "ffcs-configs", configId));
+    if (docSnap.exists()) config = docSnap.data() as FfcsConfig;
+  } catch { /* use defaults */ }
+
+  const slots = runFfcsAlgorithm(config);
+  const timetable: FfcsTimetable = {
+    id: "tt-" + Date.now(),
+    configId,
+    semester: config.semester,
+    status: "draft",
+    slots,
+    generatedAt: new Date().toISOString(),
+  };
+  _cachedTimetable = timetable;
+
+  try {
+    await setDoc(doc(db, "ffcs-timetable", "latest"), { ...timetable, slots: JSON.stringify(slots) });
+  } catch { /* offline fallback — cache only */ }
+
+  return slots;
+}
+
+export async function fetchFfcsTimetable(): Promise<FfcsTimetable> {
+  // Try Firestore first
+  try {
+    const docSnap = await getDoc(doc(db, "ffcs-timetable", "latest"));
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const slots: FfcsSlot[] = typeof data.slots === "string" ? JSON.parse(data.slots) : data.slots;
+      return { ...data, slots } as FfcsTimetable;
+    }
+  } catch { /* fall through */ }
+
+  // Use in-memory cache
+  if (_cachedTimetable) return _cachedTimetable;
+
+  // Generate a demo timetable on first load
+  const demoSlots = runFfcsAlgorithm({
+    semester: "Odd 2026-27",
+    classrooms: 8,
+    labs: 3,
+    maxClassesPerDay: 6,
+    avgLeavePerMonth: 2,
+    courseIds: [],
+    specialSlots: "",
+  });
+  const demo: FfcsTimetable = {
+    id: "demo-tt",
+    configId: "demo-cfg",
+    semester: "Odd 2026-27",
+    status: "approved",
+    slots: demoSlots,
+    generatedAt: new Date().toISOString(),
+  };
+  _cachedTimetable = demo;
+  return demo;
+}
+
+export async function approveFfcsTimetable(configId: string): Promise<void> {
+  if (_cachedTimetable) {
+    _cachedTimetable = { ..._cachedTimetable, status: "approved" };
+  }
+  try {
+    await updateDoc(doc(db, "ffcs-timetable", "latest"), { status: "approved", approvedAt: new Date().toISOString() });
+  } catch { /* offline — update local cache */ }
+}
+
+export async function registerFfcsSlot(slotId: string): Promise<void> {
+  try {
+    await addDoc(collection(db, "ffcs-registrations"), {
+      slotId,
+      registeredAt: new Date().toISOString(),
+    });
+  } catch { /* offline fallback — UI state already updated */ }
+}
+
+export async function fetchFfcsConfig(): Promise<FfcsConfig | null> {
+  try {
+    const snap = await getDocs(collection(db, "ffcs-configs"));
+    if (!snap.empty) {
+      return snap.docs[snap.docs.length - 1].data() as FfcsConfig;
+    }
+  } catch { /* fallback */ }
+  return null;
+}
+
+
