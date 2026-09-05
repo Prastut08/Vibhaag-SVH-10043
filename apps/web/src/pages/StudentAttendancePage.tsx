@@ -3,7 +3,7 @@ import { Eye, X } from "lucide-react";
 
 import { fetchStudentAttendance } from "../lib/api";
 
-type Attendance = { _id: string; date: string; status: string; checkInAt?: string | null; durationMinutes?: number | null };
+type Attendance = { _id: string; date: string; status: string; checkInAt: string | null };
 
 const courses = [
   ["CHY1006", "Environmental Sustainability - Lecture and Tutorial Hours Only", "BL2026270101123 - E14 - AB-229", "HIMANSHI HARISH SHARMA - SASL", 6, 6],

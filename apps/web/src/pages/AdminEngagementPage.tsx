@@ -12,12 +12,12 @@ import {
 
 export default function AdminEngagementPage() {
   const [announcements, setAnnouncements] = useState<
-    Array<{ _id: string; title: string; body: string; audience?: string; createdAt?: string }>
+    Array<{ _id: string; title: string; body: string; audience: string }>
   >([]);
   const [leaveRequests, setLeaveRequests] = useState<
     Array<{ _id: string; date: string; status: string; reason: string }>
   >([]);
-  const [feedback, setFeedback] = useState<Array<{ _id: string; rating: number; comment?: string | null }>>([]);
+  const [feedback, setFeedback] = useState<Array<{ _id: string; rating: number; comment: string | null }>>([]);
   const [departments, setDepartments] = useState<Array<{ _id: string; name: string }>>([]);
   const [batches, setBatches] = useState<Array<{ _id: string; name: string }>>([]);
 
