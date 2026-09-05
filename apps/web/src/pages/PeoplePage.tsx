@@ -9,7 +9,7 @@ import {
   fetchUsers,
 } from "../lib/api";
 
-type UserRow = { _id: string; name: string; email: string; role: string; rollNumber?: string | null };
+type UserRow = { _id: string; name: string; email: string; role?: string; rollNumber?: string | null };
 type SelectOption = { _id: string; name: string };
 
 export default function PeoplePage() {

@@ -7,7 +7,7 @@ type Session = { _id: string; title: string; dayOfWeek: number; startTime: strin
 export default function AttendancePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [attendance, setAttendance] = useState<
-    Array<{ _id: string; date: string; status: string; checkInAt: string | null }>
+    Array<{ _id: string; date: string; status: string; checkInAt?: string | null; durationMinutes?: number | null }>
   >([]);
 
   useEffect(() => {

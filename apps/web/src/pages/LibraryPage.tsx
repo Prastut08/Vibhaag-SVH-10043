@@ -20,6 +20,7 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
   const [department, setDepartment] = useState("Computer Science");
   const [course, setCourse] = useState("CS201 - Data Structures");
   const [description, setDescription] = useState("");
+  const [genre, setGenre] = useState("General");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -77,6 +78,7 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
         department,
         course,
         description,
+        genre,
         file,
         uploadedBy: userName,
         uploadedByRole: userRole,

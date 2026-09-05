@@ -46,6 +46,7 @@ import StudentHomePage from "./pages/StudentHomePage";
 import StudentLeavePage from "./pages/StudentLeavePage";
 import StudentSchedulePage from "./pages/StudentSchedulePage";
 import StudentLibraryPage from "./pages/StudentLibraryPage";
+import FacultyHomePage from "./pages/FacultyHomePage";
 import FacultyLeavePage from "./pages/FacultyLeavePage";
 import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
@@ -71,7 +72,6 @@ const teacherNavItems = [
   { to: "/teacher/dashboard", label: "Faculty Hub", icon: BarChart3 },
   { to: "/teacher/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/teacher/sessions", label: "Timetable", icon: CalendarDays },
-  { to: "/teacher/people", label: "People", icon: Users },
   { to: "/teacher/ffcs", label: "FFCS", icon: Grid },
   { to: "/teacher/leave", label: "Leave", icon: FileText },
   { to: "/teacher/classroom", label: "Classroom", icon: School },
@@ -86,11 +86,6 @@ const facultyNavItems = [
   { to: "/sessions", label: "Timetable", icon: CalendarDays },
   { to: "/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/ffcs", label: "FFCS", icon: Grid },
-  { to: "/faculty/leave", label: "Leave", icon: FileText },
-  { to: "/faculty/classroom", label: "Classroom", icon: School },
-  { to: "/faculty/library", label: "Library", icon: Library },
-  { to: "/faculty/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
-  { to: "/faculty/events", label: "Academic Events", icon: BookOpen },
 ];
 
 const studentNavItems = [
@@ -337,10 +332,9 @@ function MainApp() {
         </aside>
         <main className="main">
           <Routes>
-            <Route path="/teacher/dashboard" element={<DashboardPage />} />
+            <Route path="/teacher/dashboard" element={<FacultyHomePage />} />
             <Route path="/teacher/attendance" element={<AttendancePage />} />
             <Route path="/teacher/sessions" element={<SessionsPage />} />
-            <Route path="/teacher/people" element={<PeoplePage />} />
             <Route path="/teacher/ffcs" element={<FfcsFacultyPage />} />
             <Route path="/teacher/leave" element={<FacultyLeavePage />} />
             <Route path="/teacher/classroom" element={<FacultyClassroomPage />} />

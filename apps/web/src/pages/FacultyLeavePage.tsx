@@ -12,7 +12,7 @@ export default function FacultyLeavePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleStatus = async (id: string, status: "approved" | "rejected") => {
+  const handleStatus = async (id: string, status: "approved" | "denied") => {
     await updateLeaveRequest(id, status);
     const updated = await fetchLeaveRequests();
     setLeaveRequests(updated);
@@ -68,8 +68,8 @@ export default function FacultyLeavePage() {
                           <button className="button" style={{ fontSize: "12px", padding: "4px 10px" }} onClick={() => handleStatus(req._id, "approved")}>
                             ✅ Approve
                           </button>
-                          <button className="button secondary" style={{ fontSize: "12px", padding: "4px 10px" }} onClick={() => handleStatus(req._id, "rejected")}>
-                            ❌ Reject
+                          <button className="button secondary" style={{ fontSize: "12px", padding: "4px 10px" }} onClick={() => handleStatus(req._id, "denied")}>
+                            ❌ Deny
                           </button>
                         </div>
                       )}
