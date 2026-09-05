@@ -107,80 +107,28 @@ const studentNavItems = [
 
 function PortalSelectionPage() {
   const navigate = useNavigate();
+  const ShieldIllustration = () => <svg className="portal-illustration" fill="none" viewBox="0 0 80 84" aria-hidden="true"><path d="M40 78C62 67 69 46 69 22C69 20 40 10 40 10C40 10 11 20 11 22C11 46 18 67 40 78Z" fill="#FFF7DD" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2.6" /><path d="M40 72C58 62 63.5 43 63.5 24C63.5 22 40 14 40 14C40 14 16.5 22 16.5 24C16.5 43 22 62 40 72Z" stroke="#876527" strokeLinejoin="round" strokeWidth="2.4" /><path d="M40 28L43.8 36.8L53.2 37.8L46.1 44.1L48.1 53.4L40 48.7L31.9 53.4L33.9 44.1L26.8 37.8L36.2 36.8L40 28Z" fill="#D8A033" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2.2" /></svg>;
+  const BookIllustration = () => <svg className="portal-illustration" fill="none" viewBox="0 0 84 80" aria-hidden="true"><path d="M12 60C24 55 39 56 42 61C45 56 60 55 72 60V23C60 18 45 19 42 24C39 19 24 18 12 23V60Z" fill="#5A4736" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2.6" /><path d="M14 20C26 15 40 16 42 22C44 16 58 15 70 20V56C58 51 44 52 42 58C40 52 26 51 14 56V20Z" fill="#FFF7DD" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2.6" /><path d="M42 22V58" stroke="#2B2D2F" strokeLinecap="round" strokeWidth="2.4" /><path d="M20 29L35 28M20 36L35 35M20 43L35 42M49 28L64 29M49 35L64 36M49 42L64 43" stroke="#9A8E7D" strokeLinecap="round" strokeWidth="1.8" /><g transform="rotate(42 47 32)"><rect width="6" height="23" x="42" y="16" fill="#3D5A80" stroke="#2B2D2F" strokeWidth="2" /><path d="M42 39L45 46L48 39H42Z" fill="#F0C767" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2" /></g></svg>;
+  const StudentIllustration = () => <svg className="portal-illustration" fill="none" viewBox="0 0 80 80" aria-hidden="true"><path d="M28 32V42C28 46 33 50 40 50C47 50 52 46 52 42V32" fill="#2A3847" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2.6" /><polygon points="40,16 68,26 40,36 12,26" fill="#4A637C" stroke="#2B2D2F" strokeLinejoin="round" strokeWidth="2.6" /><circle cx="40" cy="26" r="2.2" fill="#2B2D2F" /><path d="M40 26L60 35V45" stroke="#C49B24" strokeLinecap="round" strokeWidth="2.2" /><rect width="4" height="6" x="58" y="45" fill="#C49B24" stroke="#2B2D2F" strokeWidth="1.8" /><g transform="rotate(-15 32 58)"><rect width="30" height="9" x="18" y="54" fill="#FFF7DD" stroke="#2B2D2F" strokeWidth="2.2" /><rect width="4" height="11" x="31" y="53" fill="#B33927" stroke="#2B2D2F" strokeWidth="1.6" /></g></svg>;
   return (
-    <div className="login-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "20px" }}>
-      <div style={{ textTransform: "uppercase", letterSpacing: "2px", fontSize: "12px", fontWeight: 700, color: "#6366f1", marginBottom: "8px" }}>
-        Vibhaag Portal
-      </div>
-      <h1 style={{ fontSize: "32px", fontWeight: 800, marginBottom: "12px", color: "#111827" }}>
-        Select Your Campus Portal
-      </h1>
-      <p style={{ color: "#6b7280", marginBottom: "32px", textAlign: "center", maxWidth: "420px" }}>
-        Welcome to Vibhaag College Management System. Please select your role to proceed to the designated portal.
-      </p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "20px", width: "100%", maxWidth: "800px" }}>
-        {/* Admin Card */}
-        <div
-          onClick={() => navigate("/admin/login")}
-          style={{
-            background: "#ffffff",
-            padding: "24px",
-            borderRadius: "16px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-            cursor: "pointer",
-            transition: "transform 0.2s, box-shadow 0.2s",
-          }}
-          className="portal-card"
-        >
-          <div style={{ background: "#ecfdf5", color: "#059669", width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
-            <Shield size={24} />
+    <div className="portal-container">
+      <div className="content-wrapper">
+        <span className="portal-tag">Vibhaag Portal</span>
+        <h1 className="main-title">Select Your Campus Portal</h1>
+        <p className="subtitle">Welcome to Vibhaag College Management System.<br />Please select your role to proceed to the designated portal.</p>
+        <div className="cards-grid">
+          <div className="portal-card portal-card-admin" onClick={() => navigate("/admin/login")}>
+            <div><ShieldIllustration /><h2 className="card-title">Admin Portal</h2><p className="card-description">Streamline campus management, departments, security, and institutional settings.</p></div>
+            <button className="card-button" onClick={() => navigate("/admin/login")}>Enter Admin Portal</button>
           </div>
-          <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>Admin Portal</h3>
-          <p style={{ fontSize: "14px", color: "#6b7280" }}>Manage departments, branches, system settings, and user access control.</p>
-        </div>
-
-        {/* Teacher Card */}
-        <div
-          onClick={() => navigate("/teacher/login")}
-          style={{
-            background: "#ffffff",
-            padding: "24px",
-            borderRadius: "16px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-            cursor: "pointer",
-            transition: "transform 0.2s, box-shadow 0.2s",
-          }}
-          className="portal-card"
-        >
-          <div style={{ background: "#eef2ff", color: "#4f46e5", width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
-            <BookOpen size={24} />
+          <div className="portal-card portal-card-teacher" onClick={() => navigate("/teacher/login")}>
+            <div><BookIllustration /><h2 className="card-title">Teacher Portal</h2><p className="card-description">Foster student growth, manage coursework, grading, and leave applications.</p></div>
+            <button className="card-button" onClick={() => navigate("/teacher/login")}>Enter Teacher Portal</button>
           </div>
-          <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>Teacher Portal</h3>
-          <p style={{ fontSize: "14px", color: "#6b7280" }}>Record attendance, handle student evaluation, leave approvals, and classes.</p>
-        </div>
-
-        {/* Student Card */}
-        <div
-          onClick={() => navigate("/student/login")}
-          style={{
-            background: "#ffffff",
-            padding: "24px",
-            borderRadius: "16px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-            cursor: "pointer",
-            transition: "transform 0.2s, box-shadow 0.2s",
-          }}
-          className="portal-card"
-        >
-          <div style={{ background: "#eff6ff", color: "#2563eb", width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
-            <User size={24} />
+          <div className="portal-card portal-card-student" onClick={() => navigate("/student/login")}>
+            <div><StudentIllustration /><h2 className="card-title">Student Portal</h2><p className="card-description">Access academic records, class schedules, campus news, and essential services.</p></div>
+            <button className="card-button" onClick={() => navigate("/student/login")}>Enter Student Portal</button>
           </div>
-          <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>Student Portal</h3>
-          <p style={{ fontSize: "14px", color: "#6b7280" }}>View attendance records, schedules, feedback, and campus announcements.</p>
         </div>
       </div>
     </div>
