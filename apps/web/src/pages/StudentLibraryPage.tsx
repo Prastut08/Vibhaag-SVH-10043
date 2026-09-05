@@ -34,12 +34,33 @@ export default function StudentLibraryPage() {
   const searched = useMemo(() => {
     return visibleMaterials.filter(
       (item) =>
-        item.title.toLowerCase().includes(search.toLowerCase()) ||
-        item.course.toLowerCase().includes(search.toLowerCase()) ||
-        item.genre.toLowerCase().includes(search.toLowerCase()) ||
-        item.uploadedBy.toLowerCase().includes(search.toLowerCase())
+        (item.title || "").toLowerCase().includes(search.toLowerCase()) ||
+        (item.course || "").toLowerCase().includes(search.toLowerCase()) ||
+        (item.genre || "").toLowerCase().includes(search.toLowerCase()) ||
+        (item.uploadedBy || "").toLowerCase().includes(search.toLowerCase())
     );
   }, [visibleMaterials, search]);
+
+  const handleDownload = async (item: LibraryMaterial) => {
+    let url = item.fileUrl;
+    const itemId = item._id || item.id;
+    if (!url || url.startsWith("idb://") || url.includes("unsplash.com")) {
+      const { getFileUrlFromIndexedDB } = await import("../lib/idb");
+      const idbUrl = await getFileUrlFromIndexedDB(itemId);
+      if (idbUrl) url = idbUrl;
+    }
+    if (!url) {
+      alert("File is not available for download.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = item.fileName || `${item.title.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -85,28 +106,30 @@ export default function StudentLibraryPage() {
 
         {!loading && (
           <div className="grid">
-            {searched.map((item) => (
-              <div key={item._id} className="card" style={{ textAlign: "left" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <span className="badge" style={{ marginBottom: "8px" }}>{item.resourceType}</span>
-                    <h3 style={{ margin: "8px 0 6px" }}>{item.title}</h3>
-                    <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>Genre: {item.genre}</p>
-                    <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>{item.course} • {item.department}</p>
-                    <p style={{ margin: 0, color: "var(--muted)", fontSize: "12px" }}>👤 {item.uploadedBy}</p>
+            {searched.map((item) => {
+              const itemId = item._id || item.id || `mat-${Math.random()}`;
+              return (
+                <div key={itemId} className="card" style={{ textAlign: "left" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <span className="badge" style={{ marginBottom: "8px" }}>{item.resourceType}</span>
+                      <h3 style={{ margin: "8px 0 6px" }}>{item.title}</h3>
+                      {item.genre && <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>Genre: {item.genre}</p>}
+                      <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>{item.course} • {item.department}</p>
+                      <p style={{ margin: 0, color: "var(--muted)", fontSize: "12px" }}>👤 {item.uploadedBy}</p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(item)}
+                    className="button"
+                    style={{ marginTop: "10px", width: "100%", textAlign: "center" }}
+                  >
+                    📥 Open / Download
+                  </button>
                 </div>
-                <a
-                  href={item.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="button"
-                  style={{ marginTop: "10px", textAlign: "center", textDecoration: "none" }}
-                >
-                  Open / Download
-                </a>
-              </div>
-            ))}
+              );
+            })}
             {searched.length === 0 && (
               <div style={{ textAlign: "center", color: "var(--muted)" }}>
                 No materials found.

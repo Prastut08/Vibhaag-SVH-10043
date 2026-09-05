@@ -59,7 +59,7 @@ export default function FacultyLibraryPage() {
     }
     setUploading(true);
     setUploadError(null);
-    setUploadStatus("Uploading file to Cloudinary...");
+    setUploadStatus("Saving material to Library...");
 
     try {
       const newMaterial = await createLibraryMaterial({
@@ -74,7 +74,7 @@ export default function FacultyLibraryPage() {
         uploadedByRole: "faculty",
       });
       setMaterials((prev) => [newMaterial, ...prev]);
-      setUploadStatus("Successfully uploaded and saved to Firestore!");
+      setUploadStatus("Successfully saved & uploaded!");
       setTimeout(() => {
         setShowUpload(false);
         setUploadStatus(null);
@@ -83,7 +83,7 @@ export default function FacultyLibraryPage() {
         setDescription("");
         setGenre("");
         setFile(null);
-      }, 1200);
+      }, 500);
     } catch (err: any) {
       setUploadError(err?.message || "Failed to upload file");
     } finally {
@@ -92,8 +92,30 @@ export default function FacultyLibraryPage() {
   };
 
   const handleRemove = async (id: string) => {
+    if (!id) return;
     await deleteLibraryMaterial(id);
-    setMaterials((prev) => prev.filter((item) => item._id !== id));
+    setMaterials((prev) => prev.filter((item) => (item._id || item.id) !== id));
+  };
+
+  const handleDownload = async (item: LibraryMaterial) => {
+    let url = item.fileUrl;
+    const itemId = item._id || item.id;
+    if (!url || url.startsWith("idb://") || url.includes("unsplash.com")) {
+      const { getFileUrlFromIndexedDB } = await import("../lib/idb");
+      const idbUrl = await getFileUrlFromIndexedDB(itemId);
+      if (idbUrl) url = idbUrl;
+    }
+    if (!url) {
+      alert("File is not available for download.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = item.fileName || `${item.title.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -241,35 +263,38 @@ export default function FacultyLibraryPage() {
 
         {!loading && (
           <div className="grid">
-            {filtered.map((item) => (
-              <div key={item._id} className="card" style={{ textAlign: "left" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    <span className="badge" style={{ marginBottom: "8px" }}>{item.resourceType}</span>
-                    <h3 style={{ margin: "8px 0 6px" }}>{item.title}</h3>
-                    <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>Genre: {item.genre}</p>
-                    <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>{item.course} • {item.department}</p>
-                    <p style={{ margin: 0, color: "var(--muted)", fontSize: "12px" }}>👤 {item.uploadedBy}</p>
+            {filtered.map((item) => {
+              const itemId = item._id || item.id || "";
+              return (
+                <div key={itemId} className="card" style={{ textAlign: "left" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <span className="badge" style={{ marginBottom: "8px" }}>{item.resourceType}</span>
+                      <h3 style={{ margin: "8px 0 6px" }}>{item.title}</h3>
+                      {item.genre && <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>Genre: {item.genre}</p>}
+                      <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: "12px" }}>{item.course} • {item.department}</p>
+                      <p style={{ margin: 0, color: "var(--muted)", fontSize: "12px" }}>👤 {item.uploadedBy}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => handleRemove(itemId)}
+                      style={{ marginLeft: "8px", padding: "4px 8px", fontSize: "11px", backgroundColor: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5" }}
+                    >
+                      🗑️ Remove
+                    </button>
                   </div>
                   <button
-                    className="button secondary"
-                    onClick={() => handleRemove(item._id)}
-                    style={{ marginLeft: "8px", padding: "4px 8px", fontSize: "11px" }}
+                    type="button"
+                    onClick={() => handleDownload(item)}
+                    className="button"
+                    style={{ marginTop: "10px", width: "100%", textAlign: "center" }}
                   >
-                    Remove
+                    📥 Open / Download
                   </button>
                 </div>
-                <a
-                  href={item.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="button"
-                  style={{ marginTop: "10px", textAlign: "center", textDecoration: "none" }}
-                >
-                  Open / Download
-                </a>
-              </div>
-            ))}
+              );
+            })}
             {filtered.length === 0 && (
               <div style={{ textAlign: "center", color: "var(--muted)" }}>
                 No materials found.
