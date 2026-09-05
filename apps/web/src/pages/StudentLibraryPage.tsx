@@ -5,6 +5,6 @@ type Props = {
   userName?: string;
 };
 
-export default function FacultyLibraryPage({ userRole = "faculty", userName = "Faculty Member" }: Props) {
+export default function StudentLibraryPage({ userRole = "student", userName = "Student" }: Props) {
   return <LibraryPage userRole={userRole} userName={userName} />;
 }

@@ -43,6 +43,7 @@ import StudentFeedbackPage from "./pages/StudentFeedbackPage";
 import StudentHomePage from "./pages/StudentHomePage";
 import StudentLeavePage from "./pages/StudentLeavePage";
 import StudentSchedulePage from "./pages/StudentSchedulePage";
+import StudentLibraryPage from "./pages/StudentLibraryPage";
 import FacultyLeavePage from "./pages/FacultyLeavePage";
 import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
@@ -97,7 +98,8 @@ const studentNavItems = [
   { to: "/student/announcements", label: "Announcements", icon: Layers },
   { to: "/student/leave", label: "Leave Requests", icon: Users },
   { to: "/student/feedback", label: "Session Feedback", icon: Megaphone },
-  { to: "/student/ffcs", label: "FFCS", icon: Grid },
+  { to: "/student/library", label: "Library", icon: Library },
+  { to: "/student/ffcs", label: "FFCS", icon: Grid }
 ];
 
 function PortalSelectionPage() {
