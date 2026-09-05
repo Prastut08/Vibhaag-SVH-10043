@@ -249,37 +249,19 @@ export async function fetchAnalytics() {
 }
 
 export async function fetchSessions() {
-  return getCollectionDocs("/sessions", [
-    { _id: "s1", title: "Data Structures & Algorithms", dayOfWeek: 1, startTime: "09:00", endTime: "10:30" },
-    { _id: "s2", title: "Web Development Studio", dayOfWeek: 1, startTime: "11:00", endTime: "12:30" },
-    { _id: "s3", title: "Operating Systems & Networking", dayOfWeek: 2, startTime: "10:00", endTime: "11:30" },
-    { _id: "s4", title: "Artificial Intelligence & ML", dayOfWeek: 3, startTime: "14:00", endTime: "15:30" },
-    { _id: "s5", title: "Database Management Systems", dayOfWeek: 4, startTime: "09:30", endTime: "11:00" },
-  ]);
+  return getCollectionDocs("/sessions", []);
 }
 
 export async function fetchCourses() {
-  return getCollectionDocs("/courses", [
-    { _id: "c1", name: "Data Structures", code: "CS201", departmentId: "d1" },
-    { _id: "c2", name: "Web Development", code: "CS302", departmentId: "d1" },
-    { _id: "c3", name: "Operating Systems", code: "CS304", departmentId: "d1" },
-  ]);
+  return getCollectionDocs("/courses", []);
 }
 
 export async function fetchAttendance(from?: string, to?: string) {
-  return getCollectionDocs("/attendance", [
-    { _id: "a1", date: "2026-09-01", status: "present", checkInAt: "2026-09-01T09:02:00Z", durationMinutes: 90 },
-    { _id: "a2", date: "2026-09-02", status: "present", checkInAt: "2026-09-02T11:01:00Z", durationMinutes: 90 },
-    { _id: "a3", date: "2026-09-03", status: "absent", checkInAt: null, durationMinutes: null },
-    { _id: "a4", date: "2026-09-04", status: "present", checkInAt: "2026-09-04T10:05:00Z", durationMinutes: 85 },
-  ]);
+  return getCollectionDocs("/attendance", []);
 }
 
 export async function fetchAnnouncements() {
-  return getCollectionDocs("/announcements", [
-    { _id: "an1", title: "Mid-Term Examination Schedule Released", body: "Mid-term exams begin next Monday. Check your schedule tab for details.", audience: "all", createdAt: "2026-09-01T10:00:00Z" },
-    { _id: "an2", title: "Annual Campus Tech Hackathon 2026", body: "Registration is open for the 48-hour Vibhaag Hackathon.", audience: "department", createdAt: "2026-09-03T14:30:00Z" },
-  ]);
+  return getCollectionDocs("/announcements", []);
 }
 
 export async function createAnnouncement(payload: {
@@ -337,10 +319,7 @@ export async function createLeaveRequest(sessionId: string, date: string, reason
 }
 
 export async function fetchLeaveRequests() {
-  return getCollectionDocs("/leave-requests", [
-    { _id: "l1", date: "2026-09-10", status: "pending", reason: "Attending Inter-College Tech Fest" },
-    { _id: "l2", date: "2026-08-25", status: "approved", reason: "Medical Appointment" },
-  ]);
+  return getCollectionDocs("/leave-requests", []);
 }
 
 export async function updateLeaveRequest(id: string, status: "approved" | "denied") {
@@ -367,26 +346,15 @@ export async function submitFeedback(sessionId: string, rating: number, comment?
 }
 
 export async function fetchFeedback() {
-  return getCollectionDocs("/feedback", [
-    { _id: "f1", rating: 5, comment: "Great interactive session on Data Structures recursion!", createdAt: "2026-09-02T12:30:00Z" },
-    { _id: "f2", rating: 4, comment: "Very informative lecture on OS process scheduling.", createdAt: "2026-09-03T11:30:00Z" },
-  ]);
+  return getCollectionDocs("/feedback", []);
 }
 
 export async function fetchDepartments() {
-  return getCollectionDocs("/departments", [
-    { _id: "d1", name: "Computer Science & Engineering", code: "CSE" },
-    { _id: "d2", name: "Electronics & Communication", code: "ECE" },
-    { _id: "d3", name: "Mechanical Engineering", code: "ME" },
-  ]);
+  return getCollectionDocs("/departments", []);
 }
 
 export async function fetchBatches() {
-  return getCollectionDocs("/batches", [
-    { _id: "b1", name: "CSE Batch 2024", year: 2024 },
-    { _id: "b2", name: "CSE Batch 2025", year: 2025 },
-    { _id: "b3", name: "ECE Batch 2024", year: 2024 },
-  ]);
+  return getCollectionDocs("/batches", []);
 }
 
 export async function createDepartment(name: string, code: string) {
@@ -434,12 +402,7 @@ export async function createSession(payload: {
 }
 
 export async function fetchUsers() {
-  return getCollectionDocs("/users", [
-    { _id: "u1", name: "Dr. Ananya Roy", email: "ananya@vibhaag.dev", role: "faculty", rollNumber: null },
-    { _id: "u2", name: "Prof. Vikram Patel", email: "vikram@vibhaag.dev", role: "faculty", rollNumber: null },
-    { _id: "u3", name: "Rahul Sharma", email: "rahul@vibhaag.dev", role: "student", rollNumber: "CS-2024-042" },
-    { _id: "u4", name: "Priya Singh", email: "priya@vibhaag.dev", role: "student", rollNumber: "CS-2024-043" },
-  ]);
+  return getCollectionDocs("/users", []);
 }
 
 export async function createUser(payload: {
@@ -677,26 +640,15 @@ export async function fetchFfcsTimetable(): Promise<FfcsTimetable> {
   // Use in-memory cache
   if (_cachedTimetable) return _cachedTimetable;
 
-  // Generate a demo timetable on first load
-  const demoSlots = runFfcsAlgorithm({
+  const emptyTt: FfcsTimetable = {
+    id: "tt-empty",
+    configId: "cfg-empty",
     semester: "Odd 2026-27",
-    classrooms: 8,
-    labs: 3,
-    maxClassesPerDay: 6,
-    avgLeavePerMonth: 2,
-    courseIds: [],
-    specialSlots: "",
-  });
-  const demo: FfcsTimetable = {
-    id: "demo-tt",
-    configId: "demo-cfg",
-    semester: "Odd 2026-27",
-    status: "approved",
-    slots: demoSlots,
+    status: "draft",
+    slots: [],
     generatedAt: new Date().toISOString(),
   };
-  _cachedTimetable = demo;
-  return demo;
+  return emptyTt;
 }
 
 export async function approveFfcsTimetable(configId: string): Promise<void> {
@@ -1009,27 +961,44 @@ export async function createLibraryMaterial(payload: {
   let fileName = payload.file.name;
   let fileSize = payload.file.size;
 
-  // Try Cloudinary unsigned upload (preset: "ml_default" is common; adjust if needed)
+  // Try Cloudinary unsigned upload if credentials are provided
   try {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "demo";
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
-    const formData = new FormData();
-    formData.append("file", payload.file);
-    formData.append("upload_preset", uploadPreset);
-    const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-      method: "POST",
-      body: formData,
-    });
-    if (resp.ok) {
-      const result = await resp.json();
-      fileUrl = result.secure_url || result.url || "";
-      fileName = result.original_filename || fileName;
-      fileSize = result.bytes || fileSize;
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    if (cloudName && uploadPreset) {
+      const formData = new FormData();
+      formData.append("file", payload.file);
+      formData.append("upload_preset", uploadPreset);
+      const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        fileUrl = result.secure_url || result.url || "";
+        fileName = result.original_filename || fileName;
+        fileSize = result.bytes || fileSize;
+      }
     }
-  } catch {
-    /* If Cloudinary is not configured, use a local object URL as fallback */
-    fileUrl = URL.createObjectURL(payload.file);
+  } catch (err) {
+    console.warn("Cloudinary upload notice:", err);
   }
+
+  // Fallback to Data URL if Cloudinary is not configured or failed
+  if (!fileUrl) {
+    fileUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string) || "");
+      reader.onerror = () => resolve(URL.createObjectURL(payload.file));
+      reader.readAsDataURL(payload.file);
+    });
+  }
+
+  const fileType = fileName.includes(".")
+    ? fileName.split(".").pop() || "pdf"
+    : payload.file.type
+      ? payload.file.type.split("/").pop() || "pdf"
+      : "pdf";
 
   const newMaterial: LibraryMaterial = {
     id: `lib-${Date.now()}`,
@@ -1043,6 +1012,7 @@ export async function createLibraryMaterial(payload: {
     fileUrl,
     fileName,
     fileSize,
+    fileType,
     createdAt: new Date().toISOString(),
   };
 
