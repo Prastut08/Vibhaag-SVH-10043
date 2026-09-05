@@ -229,14 +229,14 @@ async function getCollectionDocs<T>(collectionName: string, initialSeedData: T[]
 export async function fetchAnalytics() {
   const sessions = await fetchSessions();
   const users = await fetchUsers();
-  const faculty = users.filter((u) => u.role === "faculty");
-  const students = users.filter((u) => u.role === "student");
+  const faculty = users.filter((u: any) => u.role === "faculty" || u.role === "teacher");
+  const students = users.filter((u: any) => u.role === "student");
   const leaveRequests = await fetchLeaveRequests();
-  const pendingLeaves = leaveRequests.filter((l) => l.status === "pending").length;
+  const pendingLeaves = leaveRequests.filter((l: any) => l.status === "pending").length;
   const feedback = await fetchFeedback();
   const feedbackAvg =
     feedback.length > 0
-      ? Number((feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length).toFixed(1))
+      ? Number((feedback.reduce((sum: number, f: any) => sum + (f.rating || 0), 0) / feedback.length).toFixed(1))
       : 4.8;
 
   return {
@@ -938,6 +938,7 @@ export type LibraryMaterial = {
   fileUrl: string;
   fileName: string;
   fileSize: number;
+  fileType?: string;
   createdAt: string;
 };
 
@@ -986,7 +987,7 @@ export async function fetchLibraryMaterials(): Promise<LibraryMaterial[]> {
         }
       });
     }
-  } catch {}
+  } catch { }
 
   // Resolve IndexedDB local binary URLs for offline/cached materials
   for (const mat of list) {
@@ -1017,7 +1018,6 @@ export async function createLibraryMaterial(payload: {
   const fileName = payload.file.name;
   const fileSize = payload.file.size;
 
-  // 1. Save to IndexedDB immediately (10-20ms) for 100% offline & instant binary access
   await saveFileToIndexedDB(matId, payload.file);
   const localUrl = (await getFileUrlFromIndexedDB(matId)) || `idb://${matId}`;
 
@@ -1038,7 +1038,6 @@ export async function createLibraryMaterial(payload: {
 
   const newMaterial: LibraryMaterial = { _id: matId, id: matId, ...docData };
 
-  // 2. Save doc to Firestore and localStorage immediately (< 50ms)
   try {
     await setDoc(doc(db, "library-materials", matId), docData);
   } catch (err) {
@@ -1051,7 +1050,6 @@ export async function createLibraryMaterial(payload: {
     localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify([newMaterial, ...existing]));
   } catch {}
 
-  // 3. Background Async Cloud Upload to ImageKit.io
   (async () => {
     try {
       const publicKey =
@@ -1063,7 +1061,6 @@ export async function createLibraryMaterial(payload: {
       let expire = Math.floor(Date.now() / 1000) + 1800;
       let signature = "";
 
-      // Try fetching signature from backend Express API first (/imagekit/auth)
       try {
         const apiBaseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
         const authResp = await fetch(`${apiBaseUrl}/imagekit/auth`);
@@ -1077,7 +1074,6 @@ export async function createLibraryMaterial(payload: {
         console.warn("ImageKit backend auth fetch notice:", authErr);
       }
 
-      // Fallback: Compute HMAC-SHA1 signature client-side using Web Crypto API
       if (!signature) {
         signature = await getImageKitSignature(token, expire, privateKey);
       }
@@ -1106,10 +1102,6 @@ export async function createLibraryMaterial(payload: {
         if (resp.ok) {
           const result = await resp.json();
           remoteUrl = result.url || result.secure_url || "";
-          console.log("Successfully uploaded to ImageKit.io:", remoteUrl);
-        } else {
-          const errRes = await resp.json().catch(() => ({}));
-          console.warn("ImageKit upload response error notice:", errRes);
         }
       } catch (uploadErr) {
         clearTimeout(timeoutId);
@@ -1117,14 +1109,12 @@ export async function createLibraryMaterial(payload: {
       }
 
       if (remoteUrl) {
-        // Update Firestore document with remote ImageKit URL
         try {
           await updateDoc(doc(db, "library-materials", matId), { fileUrl: remoteUrl });
         } catch (dbErr) {
           console.warn("Firestore updateDoc ImageKit URL notice:", dbErr);
         }
 
-        // Also update local item in localStorage
         try {
           const raw = localStorage.getItem("vibhaag-custom-library-materials");
           if (raw) {
@@ -1144,67 +1134,263 @@ export async function createLibraryMaterial(payload: {
   return newMaterial;
 }
 
-export async function deleteLibraryMaterial(id: string) {
-  if (!id) return;
-  try {
-    const { deleteDoc, doc } = await import("firebase/firestore");
-    await deleteDoc(doc(db, "library-materials", id));
-  } catch (e) {
-    console.warn("Delete Firestore material notice:", e);
+export async function fetchAdminFfcsWindows() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch FFCS windows");
   }
-
-  // Delete from IndexedDB
-  await deleteFileFromIndexedDB(id);
-
-  // Delete from localStorage cache
-  try {
-    const raw = localStorage.getItem("vibhaag-custom-library-materials");
-    if (raw) {
-      const existing: LibraryMaterial[] = JSON.parse(raw);
-      const filtered = existing.filter((item) => (item._id || item.id) !== id);
-      localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(filtered));
-    }
-  } catch {}
+  return data;
 }
 
-export type AISummary = {
-  _id: string;
-  inputText: string;
-  summary: string;
-  createdAt: string;
-};
-
-export async function createAISummary(payload: { inputText: string; summary: string }): Promise<AISummary> {
-  const docData = { ...payload, createdAt: new Date().toISOString() };
-  try {
-    const docRef = await addDoc(collection(db, "ai-summaries"), docData);
-    return { _id: docRef.id, ...docData };
-  } catch (e) {
-    return { _id: "summary-" + Date.now(), ...docData };
+export async function createFfcsWindow(payload: {
+  semester: number | string;
+  academicYear: string;
+  startDateTime: string;
+  endDateTime: string;
+  status?: "scheduled" | "open" | "closed";
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create FFCS window");
   }
+  return data;
 }
 
-export async function fetchAISummaries(): Promise<AISummary[]> {
-  return getCollectionDocs<AISummary>("ai-summaries", []);
-}
-
-export type AcademicEvent = {
-  _id: string;
-  title: string;
-  date: string;
-  description: string;
-};
-
-export async function createAcademicEvent(payload: { title: string; date: string; description: string }): Promise<AcademicEvent> {
-  try {
-    const docRef = await addDoc(collection(db, "academic-events"), payload);
-    return { _id: docRef.id, ...payload };
-  } catch (e) {
-    return { _id: "evt-" + Date.now(), ...payload };
+export async function updateFfcsWindow(id: string, payload: Partial<{
+  status: "scheduled" | "open" | "closed";
+  startDateTime: string;
+  endDateTime: string;
+  semester: number | string;
+  academicYear: string;
+}>) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update FFCS window");
   }
+  return data;
 }
 
-export async function fetchAcademicEvents(): Promise<AcademicEvent[]> {
-  return getCollectionDocs<AcademicEvent>("academic-events", []);
+export async function fetchAdminFfcsOfferings(params?: { windowId?: string; semester?: string }) {
+  const authHeader = await getAuthHeader();
+  const query = new URLSearchParams();
+  if (params?.windowId) query.append("windowId", params.windowId);
+  if (params?.semester) query.append("semester", params.semester);
+
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings?${query.toString()}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch course offerings");
+  }
+  return data;
+}
+
+export async function createFfcsOffering(payload: {
+  windowId: string;
+  semester: number | string;
+  subjectId: string;
+  subjectName: string;
+  teacherId: string;
+  teacherName: string;
+  day: string;
+  slotId: string;
+  capacity: number;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create course offering");
+  }
+  return data;
+}
+
+export async function updateFfcsOffering(id: string, payload: Partial<{
+  capacity: number;
+  status: "active" | "inactive";
+  day: string;
+  slotId: string;
+}>) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update offering");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsApplications(windowId?: string) {
+  const authHeader = await getAuthHeader();
+  const query = windowId ? `?windowId=${windowId}` : "";
+  const res = await fetch(`${API_BASE}/admin/ffcs/applications${query}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch applications");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsAllocations(windowId?: string) {
+  const authHeader = await getAuthHeader();
+  const query = windowId ? `?windowId=${windowId}` : "";
+  const res = await fetch(`${API_BASE}/admin/ffcs/allocations${query}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch allocations");
+  }
+  return data;
+}
+
+export async function syncLiveFfcsState(windowId: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${windowId}/sync-live`, {
+    method: "POST",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to sync live state");
+  }
+  return data;
+}
+
+export async function allocateFfcsWindow(windowId: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${windowId}/allocate`, {
+    method: "POST",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to run allocation engine");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsStatus() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/current`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student FFCS status");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsOfferings() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/offerings`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student offerings");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsApplications() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/applications`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student applications");
+  }
+  return data;
+}
+
+export async function submitStudentFfcsApplication(payload: {
+  windowId: string;
+  offeringId: string;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/applications`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to submit course choice");
+  }
+  return data;
+}
+
+export async function fetchTeacherFfcsApplications() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/ffcs/applications`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch teacher applications");
+  }
+  return data;
+}
+
+export async function updateTeacherFfcsApplicationStatus(id: string, status: "allocated" | "rejected" | "pending") {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/ffcs/applications/${id}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update application status");
+  }
+  return data;
 }
 
