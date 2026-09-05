@@ -22,6 +22,8 @@ import firebaseRoutes from "./routes/firebase";
 import adminRoutes from "./routes/admin";
 import ffcsRoutes from "./routes/ffcs";
 
+import imagekitRoutes from "./routes/imagekit";
+
 export function createApp() {
   const app = express();
   app.use(helmet());
@@ -41,6 +43,7 @@ export function createApp() {
   app.use("/admin", adminRoutes);
   app.use("/ffcs", ffcsRoutes);
   app.use(ffcsRoutes);
+  app.use("/imagekit", imagekitRoutes);
 
   app.use("/auth", authRoutes);
   app.use("/departments", departmentRoutes);
