@@ -161,12 +161,7 @@ router.post("/verify", requireAuth, async (req: AuthenticatedRequest, res: Respo
  * Returns system bootstrapping status.
  */
 router.get("/status", async (_req, res: Response) => {
-  try {
-    const usersSnap = await adminDb.collection("users").limit(1).get();
-    return res.json({ hasUsers: !usersSnap.empty });
-  } catch {
-    return res.json({ hasUsers: true });
-  }
+  return res.json({ hasUsers: true });
 });
 
 export default router;

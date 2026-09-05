@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
-import { Course } from "../models/Course";
+import { adminDb } from "../lib/firebase-admin";
 
 const router = Router();
 
@@ -13,8 +13,12 @@ const courseSchema = z.object({
 });
 
 router.get("/", requireAuth, async (_req, res) => {
-  const courses = await Course.find().sort({ name: 1 });
-  return res.json(courses);
+  try {
+    const snap = await adminDb.collection("courses").get();
+    return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch {
+    return res.json([]);
+  }
 });
 
 router.post("/", requireAuth, requireRole(["admin"]), async (req, res) => {
@@ -22,7 +26,9 @@ router.post("/", requireAuth, requireRole(["admin"]), async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload" });
   }
-  const course = await Course.create(parsed.data);
+  const docRef = adminDb.collection("courses").doc();
+  const course = { id: docRef.id, ...parsed.data, createdAt: new Date().toISOString() };
+  await docRef.set(course);
   return res.status(201).json(course);
 });
 

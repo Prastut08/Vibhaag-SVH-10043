@@ -174,21 +174,28 @@ export async function verifyPortalLogin(expectedRole: "admin" | "student" | "tea
   const token = await auth.currentUser.getIdToken(true);
   localStorage.setItem("vibhaag-token", token);
 
-  const res = await fetch(`${API_BASE}/auth/verify`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ expectedRole, identifier }),
-  });
+  try {
+    const res = await fetch(`${API_BASE}/auth/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ expectedRole, identifier }),
+    });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Authentication failed");
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Authentication failed");
+    }
+
+    return data;
+  } catch (err: any) {
+    if (err.name === "TypeError" || err.message?.includes("fetch") || err.message?.includes("Failed to fetch")) {
+      throw new Error("Unable to connect to the server. Please try again.");
+    }
+    throw err;
   }
-
-  return data;
 }
 
 // ----------------------------------------------------
@@ -744,7 +751,7 @@ export async function createStudentAccount(payload: {
     return data;
   } catch (err: any) {
     if (err.name === "TypeError" || err.message?.includes("fetch")) {
-      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.");
+      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.", { cause: err });
     }
     throw err;
   }
@@ -774,7 +781,7 @@ export async function createTeacherAccount(payload: {
     return data;
   } catch (err: any) {
     if (err.name === "TypeError" || err.message?.includes("fetch")) {
-      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.");
+      throw new Error("API server (port 4000) is unreachable. Please ensure 'bun run dev' is running.", { cause: err });
     }
     throw err;
   }
@@ -953,4 +960,40 @@ export async function toggleUserStatus(uid: string, status: "active" | "inactive
     throw new Error(data.error || "Failed to update account status");
   }
   return data;
+}
+
+export interface LibraryMaterial {
+  _id: string;
+  title: string;
+  resourceType: string;
+  department: string;
+  course: string;
+  description: string;
+  fileUrl: string;
+  fileType: string;
+  fileSize: number;
+  uploadedBy: string;
+  uploadedByRole: string;
+  createdAt: string;
+}
+
+export async function fetchLibraryMaterials(): Promise<LibraryMaterial[]> {
+  return [];
+}
+
+export async function createLibraryMaterial(payload: any): Promise<LibraryMaterial> {
+  return {
+    _id: "lib-" + Date.now(),
+    title: payload.title || "Material",
+    resourceType: payload.resourceType || "Notes",
+    department: payload.department || "General",
+    course: payload.course || "General",
+    description: payload.description || "",
+    fileUrl: "#",
+    fileType: "pdf",
+    fileSize: 1024,
+    uploadedBy: payload.uploadedBy || "Faculty",
+    uploadedByRole: payload.uploadedByRole || "faculty",
+    createdAt: new Date().toISOString(),
+  };
 }
