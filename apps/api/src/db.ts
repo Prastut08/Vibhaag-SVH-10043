@@ -1,10 +1,11 @@
-import { adminDb } from "./lib/firebase-admin";
+import { adminDb, isFirebaseAdminConfigured } from "./lib/firebase-admin";
 
-/**
- * Ensures Firebase Admin and Firestore connection is established.
- */
 export async function connectDb(): Promise<void> {
-  // Simple check to verify Firestore is reachable on startup
+  if (!isFirebaseAdminConfigured()) {
+    console.warn("[Firebase Admin] Service account credentials or emulator host not configured. Skipping database connection check.");
+    return;
+  }
   await adminDb.listCollections();
 }
+
 

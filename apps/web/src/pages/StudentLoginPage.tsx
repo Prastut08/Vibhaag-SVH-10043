@@ -53,6 +53,8 @@ export default function StudentLoginPage({ onAuthSuccess }: StudentLoginPageProp
         setError("This account is inactive. Contact your administrator.");
       } else if (msg.includes("configured")) {
         setError("This account is not configured for Campus Hub.");
+      } else if (msg.includes("Unable to connect") || msg.includes("fetch") || msg.includes("Failed to fetch")) {
+        setError("Unable to connect to the server. Please try again.");
       } else {
         setError("Invalid credentials.");
       }

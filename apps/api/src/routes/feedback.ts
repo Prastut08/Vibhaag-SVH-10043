@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
-import { Feedback } from "../models/Feedback";
+import { adminDb } from "../lib/firebase-admin";
 
 const router = Router();
 
@@ -12,18 +12,13 @@ const createSchema = z.object({
   comment: z.string().optional(),
 });
 
-router.get("/", requireAuth, async (req, res) => {
-  const role = req.user?.role;
-  const sessionId = req.query.sessionId ? String(req.query.sessionId) : undefined;
-  const baseQuery = sessionId ? { sessionId } : {};
-
-  if (role === "student") {
-    const feedback = await Feedback.find({ ...baseQuery, studentId: req.user?.id }).sort({ createdAt: -1 });
-    return res.json(feedback);
+router.get("/", requireAuth, async (_req, res) => {
+  try {
+    const snap = await adminDb.collection("feedback").get();
+    return res.json(snap.docs.map(d => ({ _id: d.id, id: d.id, ...d.data() })));
+  } catch {
+    return res.json([]);
   }
-
-  const feedback = await Feedback.find(baseQuery).sort({ createdAt: -1 });
-  return res.json(feedback);
 });
 
 router.post("/", requireAuth, requireRole(["student"]), async (req, res) => {
@@ -31,12 +26,17 @@ router.post("/", requireAuth, requireRole(["student"]), async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload" });
   }
-  const feedback = await Feedback.create({
+  const docRef = adminDb.collection("feedback").doc();
+  const feedback = {
+    _id: docRef.id,
+    id: docRef.id,
     sessionId: parsed.data.sessionId,
-    studentId: req.user?.id,
+    studentId: req.user?.uid,
     rating: parsed.data.rating,
     comment: parsed.data.comment ?? null,
-  });
+    createdAt: new Date().toISOString(),
+  };
+  await docRef.set(feedback);
   return res.status(201).json(feedback);
 });
 

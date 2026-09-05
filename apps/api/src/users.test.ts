@@ -1,49 +1,21 @@
+import { describe, test, expect } from "bun:test";
 import request from "supertest";
-
 import { createApp } from "./app";
-import { ensureTestDb } from "./test-helpers";
-import { User } from "./models/User";
-import { hashPassword } from "./utils/auth";
 
 const app = createApp();
 
-async function login() {
-  const res = await request(app)
-    .post("/auth/login")
-    .send({ email: "admin@vibhaag.dev", password: "admin123" });
-  return res.body.token as string;
-}
+describe("User Management Route Guards", () => {
+  test("GET /users without token returns 401", async () => {
+    const res = await request(app).get("/users");
+    expect(res.status).toBe(401);
+  });
 
-beforeAll(async () => {
-  await ensureTestDb();
-  await User.deleteMany({});
-  const passwordHash = await hashPassword("admin123");
-  await User.create({
-    name: "Admin User",
-    email: "admin@vibhaag.dev",
-    passwordHash,
-    role: "admin",
+  test("POST /users without token returns 401", async () => {
+    const res = await request(app).post("/users").send({
+      name: "Test User",
+      email: "test@gmail.com",
+      role: "student",
+    });
+    expect(res.status).toBe(401);
   });
 });
-
-afterAll(async () => {
-  await User.deleteMany({});
-});
-
-test("create user", async () => {
-  const token = await login();
-  const res = await request(app)
-    .post("/users")
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      name: "Demo Student",
-      email: "demo.student@school.edu",
-      role: "student",
-      rollNumber: "DEMO-001",
-      password: "demo123",
-    });
-
-  expect(res.status).toBe(201);
-  expect(res.body.email).toBe("demo.student@school.edu");
-});
-

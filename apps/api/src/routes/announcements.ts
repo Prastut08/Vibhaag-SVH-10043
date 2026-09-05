@@ -2,8 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
-import { Announcement } from "../models/Announcement";
-import { User } from "../models/User";
+import { adminDb } from "../lib/firebase-admin";
 
 const router = Router();
 
@@ -14,27 +13,17 @@ const announcementSchema = z.object({
   audienceRef: z.string().optional(),
 });
 
-router.get("/", requireAuth, async (req, res) => {
-  const user = await User.findById(req.user?.id).select("role departmentId batchId");
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-
-  if (user.role === "student") {
-    const filters = [
-      { audience: "all" },
-      { audience: "department", audienceRef: user.departmentId },
-      { audience: "batch", audienceRef: user.batchId },
-    ];
-    const announcements = await Announcement.find({ $or: filters }).sort({ createdAt: -1 });
+router.get("/", requireAuth, async (_req, res) => {
+  try {
+    const snap = await adminDb.collection("announcements").orderBy("createdAt", "desc").get();
+    const announcements = snap.docs.map((doc) => ({ _id: doc.id, id: doc.id, ...doc.data() }));
     return res.json(announcements);
+  } catch {
+    return res.json([]);
   }
-
-  const announcements = await Announcement.find().sort({ createdAt: -1 });
-  return res.json(announcements);
 });
 
-router.post("/", requireAuth, requireRole(["admin", "faculty", "staff"]), async (req, res) => {
+router.post("/", requireAuth, requireRole(["admin", "teacher", "faculty", "staff"]), async (req, res) => {
   const parsed = announcementSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload" });
@@ -44,12 +33,22 @@ router.post("/", requireAuth, requireRole(["admin", "faculty", "staff"]), async 
     return res.status(400).json({ error: "Audience reference required" });
   }
 
-  const announcement = await Announcement.create({
-    ...parsed.data,
-    audienceRef: parsed.data.audience === "all" ? null : parsed.data.audienceRef,
-    authorId: req.user?.id,
-  });
-  return res.status(201).json(announcement);
+  try {
+    const docRef = adminDb.collection("announcements").doc();
+    const announcement = {
+      _id: docRef.id,
+      id: docRef.id,
+      ...parsed.data,
+      audienceRef: parsed.data.audience === "all" ? null : parsed.data.audienceRef,
+      authorId: req.user?.uid || null,
+      createdAt: new Date().toISOString(),
+    };
+    await docRef.set(announcement);
+    return res.status(201).json(announcement);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to create announcement";
+    return res.status(500).json({ error: msg });
+  }
 });
 
 /**

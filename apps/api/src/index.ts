@@ -5,7 +5,7 @@ import { bootstrapAdminAccount } from "./lib/firebase-admin";
 
 const app = createApp();
 
-const server = app.listen(config.port, async () => {
+const server = app.listen(config.port, "0.0.0.0", async () => {
   console.log(`API server running on http://localhost:${config.port}`);
   try {
     await bootstrapAdminAccount();

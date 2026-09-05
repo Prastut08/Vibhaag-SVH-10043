@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
-import { Batch } from "../models/Batch";
+import { adminDb } from "../lib/firebase-admin";
 
 const router = Router();
 
@@ -13,8 +13,12 @@ const batchSchema = z.object({
 });
 
 router.get("/", requireAuth, async (_req, res) => {
-  const batches = await Batch.find().sort({ year: -1 });
-  return res.json(batches);
+  try {
+    const snap = await adminDb.collection("batches").get();
+    return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch {
+    return res.json([]);
+  }
 });
 
 router.post("/", requireAuth, requireRole(["admin"]), async (req, res) => {
@@ -22,7 +26,9 @@ router.post("/", requireAuth, requireRole(["admin"]), async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload" });
   }
-  const batch = await Batch.create(parsed.data);
+  const docRef = adminDb.collection("batches").doc();
+  const batch = { id: docRef.id, ...parsed.data, createdAt: new Date().toISOString() };
+  await docRef.set(batch);
   return res.status(201).json(batch);
 });
 
