@@ -1,0 +1,29 @@
+{
+  "name": "vibhaag",
+  "private": true,
+  "version": "1.1.0",
+  "packageManager": "bun@1.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"cd apps/api && bun run dev\" \"cd apps/web && bun run dev\"",
+    "dev:api": "cd apps/api && bun run dev",
+    "dev:web": "cd apps/web && bun run dev",
+    "dev:mobile": "cd apps/mobile && bun run start",
+    "build": "cd apps/web && bun run build",
+    "seed": "cd apps/api && bun run seed",
+    "lint": "cd apps/api && bun run lint && cd ../web && bun run lint",
+    "test": "cd apps/api && bun run test",
+    "ui:install": "playwright install --with-deps",
+    "test:ui": "playwright test",
+    "test:ui:update": "playwright test --update-snapshots"
+  },
+  "dependencies": {
+    "concurrently": "^10.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
