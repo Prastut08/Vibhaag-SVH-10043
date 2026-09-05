@@ -918,21 +918,13 @@ export async function toggleUserStatus(uid: string, status: "active" | "inactive
 // LIBRARY / DIGITAL MATERIALS
 // ----------------------------------------------------
 
-import {
-  saveFileToIndexedDB,
-  getFileUrlFromIndexedDB,
-  deleteFileFromIndexedDB,
-} from "./idb";
-
 export type LibraryMaterial = {
-  _id?: string;
   id: string;
   title: string;
   resourceType: "Notes" | "Book" | "Question Paper" | "Image" | "Reference" | "Slides";
   department: string;
   course: string;
   description: string;
-  genre?: string;
   uploadedBy: string;
   uploadedByRole: string;
   fileUrl: string;
@@ -941,54 +933,18 @@ export type LibraryMaterial = {
   createdAt: string;
 };
 
-async function getCloudinarySha1(timestamp: number, apiSecret: string): Promise<string> {
-  const str = `timestamp=${timestamp}${apiSecret}`;
-  const msgUint8 = new TextEncoder().encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-1", msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+let _memoryLibrary: LibraryMaterial[] = [];
 
 export async function fetchLibraryMaterials(): Promise<LibraryMaterial[]> {
-  const list: LibraryMaterial[] = [];
   try {
     const snap = await getDocs(collection(db, "library-materials"));
     if (!snap.empty) {
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        list.push({ _id: d.id, id: d.id, ...data } as LibraryMaterial);
-      });
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LibraryMaterial[];
     }
-  } catch (err) {
-    console.warn("Firestore fetch library notice:", err);
+  } catch {
+    /* fallback to in-memory */
   }
-
-  // Merge with localStorage custom items
-  try {
-    const raw = localStorage.getItem("vibhaag-custom-library-materials");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      stored.forEach((item: LibraryMaterial) => {
-        const itemKey = item._id || item.id;
-        if (!list.some((m) => (m._id || m.id) === itemKey)) {
-          list.push(item);
-        }
-      });
-    }
-  } catch {}
-
-  // Resolve IndexedDB local binary URLs for offline/cached materials
-  for (const mat of list) {
-    const matKey = mat._id || mat.id;
-    if (!mat.fileUrl || mat.fileUrl.startsWith("idb://") || mat.fileUrl.includes("unsplash.com")) {
-      const idbUrl = await getFileUrlFromIndexedDB(matKey);
-      if (idbUrl) {
-        mat.fileUrl = idbUrl;
-      }
-    }
-  }
-
-  return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  return _memoryLibrary;
 }
 
 export async function createLibraryMaterial(payload: {
@@ -997,114 +953,59 @@ export async function createLibraryMaterial(payload: {
   department: string;
   course: string;
   description: string;
-  genre?: string;
   file: File;
   uploadedBy: string;
   uploadedByRole: string;
 }): Promise<LibraryMaterial> {
-  const matId = doc(collection(db, "library-materials")).id;
-  const fileName = payload.file.name;
-  const fileSize = payload.file.size;
+  let fileUrl = "";
+  let fileName = payload.file.name;
+  let fileSize = payload.file.size;
 
-  // 1. Save to IndexedDB immediately (10-20ms) for 100% offline & instant binary access
-  await saveFileToIndexedDB(matId, payload.file);
-  const localUrl = (await getFileUrlFromIndexedDB(matId)) || `idb://${matId}`;
+  // Try Cloudinary unsigned upload (preset: "ml_default" is common; adjust if needed)
+  try {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "demo";
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    formData.append("upload_preset", uploadPreset);
+    const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (resp.ok) {
+      const result = await resp.json();
+      fileUrl = result.secure_url || result.url || "";
+      fileName = result.original_filename || fileName;
+      fileSize = result.bytes || fileSize;
+    }
+  } catch {
+    /* If Cloudinary is not configured, use a local object URL as fallback */
+    fileUrl = URL.createObjectURL(payload.file);
+  }
 
-  const docData = {
+  const newMaterial: LibraryMaterial = {
+    id: `lib-${Date.now()}`,
     title: payload.title,
     resourceType: payload.resourceType,
     department: payload.department,
     course: payload.course,
-    description: payload.description || "",
-    genre: payload.genre || "Computer Science",
-    uploadedBy: payload.uploadedBy || "Faculty",
-    uploadedByRole: payload.uploadedByRole || "faculty",
-    fileUrl: localUrl,
+    description: payload.description,
+    uploadedBy: payload.uploadedBy,
+    uploadedByRole: payload.uploadedByRole,
+    fileUrl,
     fileName,
     fileSize,
     createdAt: new Date().toISOString(),
   };
 
-  const newMaterial: LibraryMaterial = { _id: matId, id: matId, ...docData };
+  _memoryLibrary = [newMaterial, ..._memoryLibrary];
 
-  // 2. Save doc to Firestore and localStorage immediately (< 50ms)
   try {
-    await setDoc(doc(db, "library-materials", matId), docData);
-  } catch (err) {
-    console.warn("Firestore setDoc notice:", err);
+    const docRef = await addDoc(collection(db, "library-materials"), newMaterial);
+    return { ...newMaterial, id: docRef.id };
+  } catch {
+    /* offline — return in-memory record */
   }
-
-  try {
-    const raw = localStorage.getItem("vibhaag-custom-library-materials");
-    const existing = raw ? JSON.parse(raw) : [];
-    localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify([newMaterial, ...existing]));
-  } catch {}
-
-  // 3. Background Async Cloud Upload (Cloudinary / Firebase Storage) with strict timeout
-  (async () => {
-    try {
-      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "campus-management";
-      const apiKey = import.meta.env.VITE_CLOUDINARY_API_KEY || "678676245471742";
-      const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET || "awoBs93k9LwmFyEQuJg3dRAls-Q";
-      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "vibhaag_library";
-
-      let remoteUrl = "";
-      const timestamp = Math.floor(Date.now() / 1000);
-      const signature = await getCloudinarySha1(timestamp, apiSecret);
-
-      const formData = new FormData();
-      formData.append("file", payload.file);
-      formData.append("api_key", apiKey);
-      formData.append("timestamp", timestamp.toString());
-      formData.append("signature", signature);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      try {
-        const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-          method: "POST",
-          body: formData,
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        if (resp.ok) {
-          const result = await resp.json();
-          remoteUrl = result.secure_url || result.url || "";
-        }
-      } catch {
-        clearTimeout(timeoutId);
-      }
-
-      if (!remoteUrl) {
-        const c2 = new AbortController();
-        const t2 = setTimeout(() => c2.abort(), 3000);
-        try {
-          const fd2 = new FormData();
-          fd2.append("file", payload.file);
-          fd2.append("upload_preset", uploadPreset);
-          const r2 = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-            method: "POST",
-            body: fd2,
-            signal: c2.signal,
-          });
-          clearTimeout(t2);
-          if (r2.ok) {
-            const result = await r2.json();
-            remoteUrl = result.secure_url || result.url || "";
-          }
-        } catch {
-          clearTimeout(t2);
-        }
-      }
-
-      if (remoteUrl) {
-        await updateDoc(doc(db, "library-materials", matId), { fileUrl: remoteUrl });
-      }
-    } catch (bgErr) {
-      console.warn("Background cloud upload notice:", bgErr);
-    }
-  })();
 
   return newMaterial;
 }
