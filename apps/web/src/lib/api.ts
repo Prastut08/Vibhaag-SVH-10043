@@ -1018,7 +1018,6 @@ export async function createLibraryMaterial(payload: {
   const fileName = payload.file.name;
   const fileSize = payload.file.size;
 
-  // 1. Save to IndexedDB immediately (10-20ms) for 100% offline & instant binary access
   await saveFileToIndexedDB(matId, payload.file);
   const localUrl = (await getFileUrlFromIndexedDB(matId)) || `idb://${matId}`;
 
@@ -1039,7 +1038,6 @@ export async function createLibraryMaterial(payload: {
 
   const newMaterial: LibraryMaterial = { _id: matId, id: matId, ...docData };
 
-  // 2. Save doc to Firestore and localStorage immediately (< 50ms)
   try {
     await setDoc(doc(db, "library-materials", matId), docData);
   } catch (err) {
@@ -1050,9 +1048,8 @@ export async function createLibraryMaterial(payload: {
     const raw = localStorage.getItem("vibhaag-custom-library-materials");
     const existing = raw ? JSON.parse(raw) : [];
     localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify([newMaterial, ...existing]));
-  } catch { }
+  } catch {}
 
-  // 3. Background Async Cloud Upload to ImageKit.io
   (async () => {
     try {
       const publicKey =
@@ -1064,7 +1061,6 @@ export async function createLibraryMaterial(payload: {
       let expire = Math.floor(Date.now() / 1000) + 1800;
       let signature = "";
 
-      // Try fetching signature from backend Express API first (/imagekit/auth)
       try {
         const apiBaseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
         const authResp = await fetch(`${apiBaseUrl}/imagekit/auth`);
@@ -1078,126 +1074,64 @@ export async function createLibraryMaterial(payload: {
         console.warn("ImageKit backend auth fetch notice:", authErr);
       }
 
-      // Fallback: Compute HMAC-SHA1 signature client-side using Web Crypto API
       if (!signature) {
         signature = await getImageKitSignature(token, expire, privateKey);
       }
 
       const formData = new FormData();
       formData.append("file", payload.file);
-      formData.append("upload_preset", uploadPreset);
-      const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      if (resp.ok) {
-        const result = await resp.json();
-        fileUrl = result.secure_url || result.url || "";
-        fileName = result.original_filename || fileName;
-        fileSize = result.bytes || fileSize;
+      formData.append("fileName", payload.file.name);
+      formData.append("publicKey", publicKey);
+      formData.append("signature", signature);
+      formData.append("expire", expire.toString());
+      formData.append("token", token);
+      formData.append("useUniqueFileName", "true");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      let remoteUrl = "";
+      try {
+        const resp = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          const result = await resp.json();
+          remoteUrl = result.url || result.secure_url || "";
+        }
+      } catch (uploadErr) {
+        clearTimeout(timeoutId);
+        console.warn("ImageKit upload request failed:", uploadErr);
       }
-    }
-  } catch (err) {
-    console.warn("Cloudinary upload notice:", err);
-  }
 
-  // Fallback to Data URL if Cloudinary is not configured or failed
-  if (!fileUrl) {
-    fileUrl = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string) || "");
-      reader.onerror = () => resolve(URL.createObjectURL(payload.file));
-      reader.readAsDataURL(payload.file);
-    });
-  }
+      if (remoteUrl) {
+        try {
+          await updateDoc(doc(db, "library-materials", matId), { fileUrl: remoteUrl });
+        } catch (dbErr) {
+          console.warn("Firestore updateDoc ImageKit URL notice:", dbErr);
+        }
 
-  const fileType = fileName.includes(".")
-    ? fileName.split(".").pop() || "pdf"
-    : payload.file.type
-      ? payload.file.type.split("/").pop() || "pdf"
-      : "pdf";
-
-  const newMaterial: LibraryMaterial = {
-    id: `lib-${Date.now()}`,
-    title: payload.title,
-    resourceType: payload.resourceType,
-    department: payload.department,
-    course: payload.course,
-    description: payload.description,
-    uploadedBy: payload.uploadedBy,
-    uploadedByRole: payload.uploadedByRole,
-    fileUrl,
-    fileName,
-    fileSize,
-    fileType,
-    createdAt: new Date().toISOString(),
-  };
-
-  _memoryLibrary = [newMaterial, ..._memoryLibrary];
-
-  try {
-    const docRef = await addDoc(collection(db, "library-materials"), newMaterial);
-    return { ...newMaterial, id: docRef.id };
-  } catch {
-  }
-  formData.append("fileName", payload.file.name);
-  formData.append("publicKey", publicKey);
-  formData.append("signature", signature);
-  formData.append("expire", expire.toString());
-  formData.append("token", token);
-  formData.append("useUniqueFileName", "true");
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-  let remoteUrl = "";
-  try {
-    const resp = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
-      method: "POST",
-      body: formData,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (resp.ok) {
-      const result = await resp.json();
-      remoteUrl = result.url || result.secure_url || "";
-      console.log("Successfully uploaded to ImageKit.io:", remoteUrl);
-    } else {
-      const errRes = await resp.json().catch(() => ({}));
-      console.warn("ImageKit upload response error notice:", errRes);
-    }
-  } catch (uploadErr) {
-    clearTimeout(timeoutId);
-    console.warn("ImageKit upload request failed:", uploadErr);
-  }
-
-  if (remoteUrl) {
-    // Update Firestore document with remote ImageKit URL
-    try {
-      await updateDoc(doc(db, "library-materials", matId), { fileUrl: remoteUrl });
-    } catch (dbErr) {
-      console.warn("Firestore updateDoc ImageKit URL notice:", dbErr);
-    }
-
-    // Also update local item in localStorage
-    try {
-      const raw = localStorage.getItem("vibhaag-custom-library-materials");
-      if (raw) {
-        const stored = JSON.parse(raw);
-        const updated = stored.map((item: LibraryMaterial) =>
-          (item._id || item.id) === matId ? { ...item, fileUrl: remoteUrl } : item
-        );
-        localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(updated));
+        try {
+          const raw = localStorage.getItem("vibhaag-custom-library-materials");
+          if (raw) {
+            const stored = JSON.parse(raw);
+            const updated = stored.map((item: LibraryMaterial) =>
+              (item._id || item.id) === matId ? { ...item, fileUrl: remoteUrl } : item
+            );
+            localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(updated));
+          }
+        } catch {}
       }
-    } catch { }
-  }
-} catch (bgErr) {
-  console.warn("Background cloud upload notice:", bgErr);
-}
-  }) ();
+    } catch (bgErr) {
+      console.warn("Background cloud upload notice:", bgErr);
+    }
+  })();
 
-return newMaterial;
+  return newMaterial;
 }
 
 export async function fetchAdminFfcsWindows() {
