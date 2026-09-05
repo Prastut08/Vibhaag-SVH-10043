@@ -1052,8 +1052,268 @@ export async function createLibraryMaterial(payload: {
     const docRef = await addDoc(collection(db, "library-materials"), newMaterial);
     return { ...newMaterial, id: docRef.id };
   } catch {
-    /* offline — return in-memory record */
   }
 
   return newMaterial;
 }
+
+export async function fetchAdminFfcsWindows() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch FFCS windows");
+  }
+  return data;
+}
+
+export async function createFfcsWindow(payload: {
+  semester: number | string;
+  academicYear: string;
+  startDateTime: string;
+  endDateTime: string;
+  status?: "scheduled" | "open" | "closed";
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create FFCS window");
+  }
+  return data;
+}
+
+export async function updateFfcsWindow(id: string, payload: Partial<{
+  status: "scheduled" | "open" | "closed";
+  startDateTime: string;
+  endDateTime: string;
+  semester: number | string;
+  academicYear: string;
+}>) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update FFCS window");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsOfferings(params?: { windowId?: string; semester?: string }) {
+  const authHeader = await getAuthHeader();
+  const query = new URLSearchParams();
+  if (params?.windowId) query.append("windowId", params.windowId);
+  if (params?.semester) query.append("semester", params.semester);
+
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings?${query.toString()}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch course offerings");
+  }
+  return data;
+}
+
+export async function createFfcsOffering(payload: {
+  windowId: string;
+  semester: number | string;
+  subjectId: string;
+  subjectName: string;
+  teacherId: string;
+  teacherName: string;
+  day: string;
+  slotId: string;
+  capacity: number;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to create course offering");
+  }
+  return data;
+}
+
+export async function updateFfcsOffering(id: string, payload: Partial<{
+  capacity: number;
+  status: "active" | "inactive";
+  day: string;
+  slotId: string;
+}>) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/offerings/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update offering");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsApplications(windowId?: string) {
+  const authHeader = await getAuthHeader();
+  const query = windowId ? `?windowId=${windowId}` : "";
+  const res = await fetch(`${API_BASE}/admin/ffcs/applications${query}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch applications");
+  }
+  return data;
+}
+
+export async function fetchAdminFfcsAllocations(windowId?: string) {
+  const authHeader = await getAuthHeader();
+  const query = windowId ? `?windowId=${windowId}` : "";
+  const res = await fetch(`${API_BASE}/admin/ffcs/allocations${query}`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch allocations");
+  }
+  return data;
+}
+
+export async function syncLiveFfcsState(windowId: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${windowId}/sync-live`, {
+    method: "POST",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to sync live state");
+  }
+  return data;
+}
+
+export async function allocateFfcsWindow(windowId: string) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/admin/ffcs/windows/${windowId}/allocate`, {
+    method: "POST",
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to run allocation engine");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsStatus() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/current`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student FFCS status");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsOfferings() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/offerings`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student offerings");
+  }
+  return data;
+}
+
+export async function fetchStudentFfcsApplications() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/applications`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch student applications");
+  }
+  return data;
+}
+
+export async function submitStudentFfcsApplication(payload: {
+  windowId: string;
+  offeringId: string;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/student/ffcs/applications`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to submit course choice");
+  }
+  return data;
+}
+
+export async function fetchTeacherFfcsApplications() {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/ffcs/applications`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch teacher applications");
+  }
+  return data;
+}
+
+export async function updateTeacherFfcsApplicationStatus(id: string, status: "allocated" | "rejected" | "pending") {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/ffcs/applications/${id}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader,
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update application status");
+  }
+  return data;
+}
+

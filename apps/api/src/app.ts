@@ -20,6 +20,7 @@ import studentRoutes from "./routes/student";
 import userRoutes from "./routes/users";
 import firebaseRoutes from "./routes/firebase";
 import adminRoutes from "./routes/admin";
+import ffcsRoutes from "./routes/ffcs";
 
 export function createApp() {
   const app = express();
@@ -38,6 +39,8 @@ export function createApp() {
 
   app.use("/firebase", firebaseRoutes);
   app.use("/admin", adminRoutes);
+  app.use("/ffcs", ffcsRoutes);
+  app.use(ffcsRoutes);
 
   app.use("/auth", authRoutes);
   app.use("/departments", departmentRoutes);
@@ -54,3 +57,4 @@ export function createApp() {
 
   return app;
 }
+

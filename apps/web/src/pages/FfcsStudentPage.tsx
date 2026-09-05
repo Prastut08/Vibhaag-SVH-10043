@@ -1,412 +1,438 @@
 import { useEffect, useState } from "react";
-import { fetchFfcsTimetable, registerFfcsSlot, type FfcsSlot } from "../lib/api";
-
-const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const timeSlots = [
-  "08:00", "09:00", "09:30", "10:00", "11:00", "11:30",
-  "12:00", "14:00", "14:30", "15:00", "16:00", "17:00",
-];
-
-type FilterType = "all" | "lecture" | "lab" | "elective";
+import { ref, onValue } from "firebase/database";
+import { rtdb } from "../lib/firebase";
+import {
+  fetchStudentFfcsStatus,
+  fetchStudentFfcsOfferings,
+  fetchStudentFfcsApplications,
+  submitStudentFfcsApplication,
+} from "../lib/api";
+import { FFCSWindow, FFCSOffering, FFCSApplication, TIMETABLE_SLOTS } from "@vibhaag/shared";
 
 export default function FfcsStudentPage() {
-  const [allSlots, setAllSlots] = useState<FfcsSlot[]>([]);
+  const [activeTab, setActiveTab] = useState<"selection" | "myApplications" | "timetable">("selection");
+
+  const [windowStatus, setWindowStatus] = useState<{
+    active: boolean;
+    reason?: string;
+    window?: FFCSWindow;
+    student?: { semester: string; branch: string | null };
+  } | null>(null);
+
+  const [offerings, setOfferings] = useState<FFCSOffering[]>([]);
+  const [applications, setApplications] = useState<FFCSApplication[]>([]);
+  const [liveSeatState, setLiveSeatState] = useState<Record<string, { seatsFilled: number; seatsRemaining: number; status: string }>>({});
   const [loading, setLoading] = useState(true);
-  const [registeredIds, setRegisteredIds] = useState<Set<string>>(new Set());
-  const [registering, setRegistering] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterType>("all");
-  const [activeTab, setActiveTab] = useState<"browse" | "mytimetable">("mytimetable");
-  const [selectedSlot, setSelectedSlot] = useState<FfcsSlot | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const loadStudentData = async () => {
+    setLoading(true);
+    try {
+      const statusRes = await fetchStudentFfcsStatus().catch(() => ({ active: false, reason: "Unable to connect to server." }));
+      setWindowStatus(statusRes);
+
+      if (statusRes.active) {
+        const offList = await fetchStudentFfcsOfferings().catch(() => []);
+        setOfferings(offList);
+      }
+
+      const appList = await fetchStudentFfcsApplications().catch(() => []);
+      setApplications(appList);
+    } catch (err: unknown) {
+      setMessage({ text: "Failed to load FFCS portal details", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetchFfcsTimetable()
-      .then((data) => {
-        setAllSlots(data.slots);
-        // Pre-register every 4th slot to demo student's existing registrations
-        const preReg = new Set<string>();
-        data.slots.forEach((s, i) => { if (i % 4 === 0) preReg.add(s.id); });
-        setRegisteredIds(preReg);
-      })
-      .catch(() => setAllSlots([]))
-      .finally(() => setLoading(false));
+    loadStudentData();
   }, []);
 
-  const mySlots = allSlots.filter((s) => registeredIds.has(s.id));
-  const browseSlots = allSlots.filter((s) => {
-    if (filter === "all") return true;
-    return s.type === filter || (filter === "elective" && s.isElective);
-  });
+  useEffect(() => {
+    if (!windowStatus?.active || !windowStatus?.window?.id) return;
+    const windowId = windowStatus.window.id;
+    const liveRef = ref(rtdb, `ffcsLive/${windowId}/offerings`);
 
-  const handleRegister = async (slotId: string) => {
-    setRegistering(slotId);
-    setMessage(null);
-    try {
-      await registerFfcsSlot(slotId);
-      setRegisteredIds((prev) => new Set([...prev, slotId]));
-      setMessage("✅ Successfully registered for this slot!");
-    } catch {
-      setMessage("❌ Registration failed. Please try again.");
-    } finally {
-      setRegistering(null);
-    }
-  };
-
-  const handleDrop = (slotId: string) => {
-    setRegisteredIds((prev) => {
-      const next = new Set(prev);
-      next.delete(slotId);
-      return next;
+    const unsubscribe = onValue(liveRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        setLiveSeatState(val);
+      }
     });
-    setMessage("🗑️ Slot dropped from your timetable.");
+
+    return () => unsubscribe();
+  }, [windowStatus?.active, windowStatus?.window?.id]);
+
+  const handleSelectOffering = async (offering: FFCSOffering) => {
+    if (!windowStatus?.window?.id) return;
+    setSubmittingId(offering.id);
+    setMessage(null);
+
+    try {
+      await submitStudentFfcsApplication({
+        windowId: windowStatus.window.id,
+        offeringId: offering.id,
+      });
+
+      setMessage({ text: `Successfully registered choice for ${offering.subjectName}!`, type: "success" });
+      loadStudentData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to select course offering";
+      setMessage({ text: msg, type: "error" });
+    } finally {
+      setSubmittingId(null);
+    }
   };
 
-  // Build grid for my timetable
-  const grid: Record<string, Record<string, FfcsSlot[]>> = {};
-  for (const day of days) {
-    grid[day] = {};
-    for (const t of timeSlots) grid[day][t] = [];
-  }
-  for (const slot of mySlots) {
-    if (grid[slot.day]?.[slot.startTime] !== undefined) {
-      grid[slot.day][slot.startTime].push(slot);
+  const groupedBySubject = offerings.reduce((acc, off) => {
+    if (!acc[off.subjectId]) {
+      acc[off.subjectId] = {
+        subjectName: off.subjectName,
+        offerings: [],
+      };
     }
-  }
+    acc[off.subjectId].offerings.push(off);
+    return acc;
+  }, {} as Record<string, { subjectName: string; offerings: FFCSOffering[] }>);
 
-  const totalCredits = mySlots.reduce((sum, s) => sum + (s.credits || 3), 0);
+  const appliedOfferingIds = new Set(applications.map((app) => app.offeringId));
+  const appliedSubjectIds = new Set(applications.map((app) => app.subjectId));
+
+  const allocatedApps = applications.filter((app) => app.status === "allocated" || app.status === "pending");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-
-      {/* Header */}
-      <div className="hero">
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-            <span style={{ fontSize: "28px" }}>📅</span>
-            <h2 style={{ margin: 0 }}>FFCS — My Schedule</h2>
-            <span className="badge" style={{ background: "#2563eb" }}>Student</span>
-          </div>
-          <p style={{ margin: 0, color: "var(--muted)" }}>
-            Fully Flexible Credit System — Browse available slots and build your personalized timetable.
-          </p>
+    <div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto", color: "#1F2937", background: "#FAF8F5", minHeight: "100vh" }}>
+      <div style={{ marginBottom: "24px" }}>
+        <div style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "1.5px", fontWeight: 700, color: "#C85A32" }}>
+          Student Portal
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-          <div className="kpi" style={{ color: "var(--accent-2)" }}>{mySlots.length}</div>
-          <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>registered slots</p>
-          <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--accent)" }}>{totalCredits} credits</div>
-        </div>
+        <h1 style={{ fontSize: "28px", fontWeight: 800, color: "#111827", margin: "4px 0 8px 0" }}>
+          FFCS Course Selection
+        </h1>
+        <p style={{ color: "#6B7280", margin: 0, fontSize: "14px" }}>
+          Flexible First Come First Serve — Select your preferred teachers and timetable slots for Semester {windowStatus?.student?.semester || "1"}.
+        </p>
       </div>
 
       {message && (
-        <div className="notice" style={{ background: message.startsWith("❌") ? "#b91c1c" : "var(--accent-2)" }}>
-          {message}
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "8px",
+            marginBottom: "20px",
+            fontSize: "14px",
+            fontWeight: 600,
+            background: message.type === "success" ? "#F0FDF4" : "#FEF2F2",
+            color: message.type === "success" ? "#166534" : "#991B1B",
+            border: `1px solid ${message.type === "success" ? "#BBF7D0" : "#FCA5A5"}`,
+          }}
+        >
+          {message.text}
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: "8px" }}>
+      <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid #E5E0D8", marginBottom: "24px" }}>
         <button
-          className={`button ${activeTab === "mytimetable" ? "" : "secondary"}`}
-          onClick={() => setActiveTab("mytimetable")}
-          id="ffcs-my-timetable-tab"
+          onClick={() => setActiveTab("selection")}
+          style={{
+            padding: "10px 18px",
+            fontWeight: 700,
+            fontSize: "14px",
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            borderBottom: activeTab === "selection" ? "3px solid #C85A32" : "3px solid transparent",
+            color: activeTab === "selection" ? "#C85A32" : "#6B7280",
+          }}
         >
-          📋 My Timetable
+          Course Selection
         </button>
         <button
-          className={`button ${activeTab === "browse" ? "" : "secondary"}`}
-          onClick={() => setActiveTab("browse")}
-          id="ffcs-browse-tab"
+          onClick={() => setActiveTab("myApplications")}
+          style={{
+            padding: "10px 18px",
+            fontWeight: 700,
+            fontSize: "14px",
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            borderBottom: activeTab === "myApplications" ? "3px solid #C85A32" : "3px solid transparent",
+            color: activeTab === "myApplications" ? "#C85A32" : "#6B7280",
+          }}
         >
-          🔍 Browse Slots
+          My Selections ({applications.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("timetable")}
+          style={{
+            padding: "10px 18px",
+            fontWeight: 700,
+            fontSize: "14px",
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            borderBottom: activeTab === "timetable" ? "3px solid #C85A32" : "3px solid transparent",
+            color: activeTab === "timetable" ? "#C85A32" : "#6B7280",
+          }}
+        >
+          Confirmed Timetable ({allocatedApps.length})
         </button>
       </div>
 
-      {loading && (
-        <div className="card" style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-          ⏳ Loading FFCS timetable…
+      {loading ? (
+        <div style={{ background: "#FFFFFF", padding: "40px", borderRadius: "12px", border: "1px solid #E5E0D8", textAlign: "center", color: "#6B7280" }}>
+          Loading FFCS details...
         </div>
-      )}
-
-      {/* ── MY TIMETABLE ── */}
-      {!loading && activeTab === "mytimetable" && (
+      ) : (
         <>
-          {mySlots.length === 0 ? (
-            <div className="card" style={{ textAlign: "center", padding: "40px" }}>
-              <p style={{ color: "var(--muted)", margin: "0 0 16px" }}>
-                📭 You haven't registered any FFCS slots yet.
-              </p>
-              <button className="button" onClick={() => setActiveTab("browse")} id="ffcs-browse-cta">
-                🔍 Browse Available Slots
-              </button>
+          {activeTab === "selection" && (
+            <div>
+              {!windowStatus?.active ? (
+                <div style={{ background: "#FFFFFF", padding: "40px", borderRadius: "12px", border: "1px solid #E5E0D8", textAlign: "center" }}>
+                  <div style={{ fontSize: "36px", marginBottom: "12px" }}>🔒</div>
+                  <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 8px 0", color: "#111827" }}>
+                    FFCS Selection Unavailable
+                  </h3>
+                  <p style={{ color: "#6B7280", margin: 0, fontSize: "14px", maxWidth: "500px", marginLeft: "auto", marginRight: "auto" }}>
+                    {windowStatus?.reason || "FFCS selection is currently not open for your semester."}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                  <div style={{ background: "#FFFFFF", padding: "16px 20px", borderRadius: "12px", border: "1px solid #E5E0D8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <span style={{ fontWeight: 800, fontSize: "16px", color: "#111827" }}>
+                        Active Window: Semester {windowStatus.window?.semester} ({windowStatus.window?.academicYear})
+                      </span>
+                      <div style={{ fontSize: "13px", color: "#6B7280", marginTop: "2px" }}>
+                        Closes at {new Date(windowStatus.window?.endDateTime || "").toLocaleString()}
+                      </div>
+                    </div>
+
+                    <span style={{ fontSize: "13px", fontWeight: 700, padding: "4px 12px", borderRadius: "12px", background: "#DCFCE7", color: "#166534" }}>
+                      ● WINDOW OPEN
+                    </span>
+                  </div>
+
+                  {Object.keys(groupedBySubject).length === 0 ? (
+                    <div style={{ background: "#FFFFFF", padding: "32px", borderRadius: "12px", border: "1px solid #E5E0D8", textAlign: "center", color: "#6B7280" }}>
+                      No FFCS offerings available for your semester yet.
+                    </div>
+                  ) : (
+                    Object.entries(groupedBySubject).map(([subjectId, group]) => {
+                      const isSubjectSelected = appliedSubjectIds.has(subjectId);
+                      return (
+                        <div key={subjectId} style={{ background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E5E0D8", overflow: "hidden" }}>
+                          <div style={{ padding: "16px 20px", background: "#F9FAFB", borderBottom: "1px solid #E5E0D8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#111827" }}>
+                              {group.subjectName}
+                            </h3>
+                            {isSubjectSelected && (
+                              <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534", background: "#DCFCE7", padding: "2px 10px", borderRadius: "12px" }}>
+                                Selection Submitted
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                            {group.offerings.map((off) => {
+                              const rtdbInfo = liveSeatState[off.id];
+                              const seatsFilled = rtdbInfo ? rtdbInfo.seatsFilled : off.seatsFilled;
+                              const availableSeats = rtdbInfo ? rtdbInfo.seatsRemaining : Math.max(0, off.capacity - off.seatsFilled);
+                              const isFull = availableSeats <= 0 || (rtdbInfo ? rtdbInfo.status === "full" : seatsFilled >= off.capacity);
+                              const isSelected = appliedOfferingIds.has(off.id);
+
+                              return (
+                                <div
+                                  key={off.id}
+                                  style={{
+                                    padding: "14px 16px",
+                                    borderRadius: "8px",
+                                    border: isSelected ? "2px solid #C85A32" : "1px solid #E5E0D8",
+                                    background: isSelected ? "#FDF8F6" : "#FFFFFF",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#111827" }}>
+                                      {off.teacherName}
+                                    </div>
+                                    <div style={{ fontSize: "13px", color: "#4B5563", marginTop: "2px" }}>
+                                      {off.day} · {off.startTime}–{off.endTime} ({off.slotId})
+                                    </div>
+                                  </div>
+
+                                  <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+                                    <div style={{ textAlign: "right" }}>
+                                      <div style={{ fontSize: "14px", fontWeight: 700, color: isFull ? "#991B1B" : "#166534" }}>
+                                        {isFull ? "FULL" : `${availableSeats} / ${off.capacity} seats available`}
+                                      </div>
+                                    </div>
+
+                                    {isSelected ? (
+                                      <span style={{ padding: "6px 14px", fontSize: "13px", fontWeight: 700, borderRadius: "6px", background: "#C85A32", color: "#FFFFFF" }}>
+                                        Selected
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleSelectOffering(off)}
+                                        disabled={isFull || isSubjectSelected || submittingId === off.id}
+                                        style={{
+                                          padding: "8px 16px",
+                                          fontSize: "13px",
+                                          fontWeight: 700,
+                                          borderRadius: "6px",
+                                          border: "none",
+                                          background: isFull || isSubjectSelected ? "#E5E7EB" : "#111827",
+                                          color: isFull || isSubjectSelected ? "#9CA3AF" : "#FFFFFF",
+                                          cursor: isFull || isSubjectSelected ? "not-allowed" : "pointer",
+                                        }}
+                                      >
+                                        {submittingId === off.id ? "Selecting..." : isFull ? "FULL" : "Select Teacher"}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-            <>
-              {/* Summary */}
-              <div className="grid">
-                <div className="card" style={{ textAlign: "center" }}>
-                  <p style={{ margin: 0 }}>Registered Slots</p>
-                  <div className="kpi" style={{ color: "var(--accent-2)" }}>{mySlots.length}</div>
-                </div>
-                <div className="card" style={{ textAlign: "center" }}>
-                  <p style={{ margin: 0 }}>Total Credits</p>
-                  <div className="kpi" style={{ color: "var(--accent-2)" }}>{totalCredits}</div>
-                </div>
-                <div className="card" style={{ textAlign: "center" }}>
-                  <p style={{ margin: 0 }}>Unique Subjects</p>
-                  <div className="kpi" style={{ color: "var(--accent-2)" }}>
-                    {new Set(mySlots.map((s) => s.courseCode)).size}
-                  </div>
-                </div>
-                <div className="card" style={{ textAlign: "center" }}>
-                  <p style={{ margin: 0 }}>Days with Classes</p>
-                  <div className="kpi" style={{ color: "var(--accent-2)" }}>
-                    {new Set(mySlots.map((s) => s.day)).size}
-                  </div>
-                </div>
+          )}
+
+          {activeTab === "myApplications" && (
+            <div style={{ background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E5E0D8", overflow: "hidden" }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E0D8", fontWeight: 700, fontSize: "15px" }}>
+                My Submitted Choices ({applications.length})
               </div>
 
-              {/* Grid */}
-              <div className="card" style={{ overflowX: "auto", padding: "16px" }}>
-                <h3 style={{ margin: "0 0 16px" }}>📅 My Weekly FFCS Timetable</h3>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px" }}>
+              {applications.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", color: "#6B7280" }}>
+                  You have not selected any FFCS course offerings yet.
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
                   <thead>
-                    <tr>
-                      <th style={{ background: "#dbeafe", padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: "13px" }}>
-                        Time ↓ / Day →
-                      </th>
-                      {days.map((d) => (
-                        <th key={d} style={{ background: "#dbeafe", padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "13px" }}>
-                          {d}
-                        </th>
-                      ))}
+                    <tr style={{ background: "#F3F4F6", textAlign: "left", borderBottom: "1px solid #E5E0D8" }}>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Semester</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>CGPA Snapshot</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Submitted At</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Allocation Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {timeSlots.map((time) => (
-                      <tr key={time} style={{ borderTop: "1px solid var(--line)" }}>
-                        <td style={{ padding: "8px 14px", fontWeight: 600, fontSize: "12px", color: "var(--muted)", whiteSpace: "nowrap" }}>
-                          {time}
+                    {applications.map((app) => (
+                      <tr key={app.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                        <td style={{ padding: "12px 16px", fontWeight: 600 }}>Sem {app.semester}</td>
+                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>
+                          {app.cgpaSnapshot !== null ? app.cgpaSnapshot.toFixed(2) : "N/A (Sem 1 FCFS)"}
                         </td>
-                        {days.map((day) => {
-                          const slots = grid[day][time] || [];
-                          return (
-                            <td key={day} style={{ padding: "4px 6px", verticalAlign: "top", minWidth: "120px" }}>
-                              {slots.map((slot) => (
-                                <div
-                                  key={slot.id}
-                                  onClick={() => setSelectedSlot(slot)}
-                                  id={`student-slot-${slot.id}`}
-                                  style={{
-                                    background: slot.type === "lab" ? "#eff6ff" : "#ecfdf5",
-                                    border: `2px solid ${slot.type === "lab" ? "#93c5fd" : "#6ee7b7"}`,
-                                    borderRadius: "8px",
-                                    padding: "6px 8px",
-                                    fontSize: "11px",
-                                    cursor: "pointer",
-                                    marginBottom: "4px",
-                                    transition: "transform 0.15s",
-                                  }}
-                                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1.03)"; }}
-                                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
-                                >
-                                  <div style={{ fontWeight: 700, color: "#1a1a1a" }}>{slot.courseCode}</div>
-                                  <div style={{ color: "#555" }}>{slot.facultyName.split(" ").slice(-1)[0]}</div>
-                                  <div style={{ color: "#777" }}>🚪 {slot.room}</div>
-                                </div>
-                              ))}
-                            </td>
-                          );
-                        })}
+                        <td style={{ padding: "12px 16px", color: "#6B7280", fontSize: "13px" }}>
+                          {new Date(app.submittedAt).toLocaleString()}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: "12px",
+                              textTransform: "capitalize",
+                              background: app.status === "allocated" ? "#DCFCE7" : app.status === "pending" ? "#FEF3C7" : "#FEE2E2",
+                              color: app.status === "allocated" ? "#166534" : app.status === "pending" ? "#92400E" : "#991B1B",
+                            }}
+                          >
+                            {app.status}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              )}
+            </div>
+          )}
 
-              {/* Registered list */}
-              <div className="card">
-                <div className="section-title">
-                  <h3>📋 Registered Courses</h3>
+          {activeTab === "timetable" && (
+            <div style={{ background: "#FFFFFF", padding: "20px", borderRadius: "12px", border: "1px solid #E5E0D8" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: "0 0 16px 0", color: "#111827" }}>
+                Confirmed FFCS Weekly Timetable
+              </h3>
+
+              {allocatedApps.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", color: "#6B7280" }}>
+                  No confirmed course allocations yet. Submissions are processed during or after the selection window.
                 </div>
-                <div className="table-wrap">
-                  <table className="table">
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px", fontSize: "13px" }}>
                     <thead>
-                      <tr>
-                        <th>Course</th>
-                        <th>Faculty</th>
-                        <th>Day &amp; Time</th>
-                        <th>Room</th>
-                        <th>Credits</th>
-                        <th>Action</th>
+                      <tr style={{ background: "#F3F4F6" }}>
+                        <th style={{ padding: "10px 14px", border: "1px solid #E5E0D8", textAlign: "left" }}>Slot / Time</th>
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d) => (
+                          <th key={d} style={{ padding: "10px 14px", border: "1px solid #E5E0D8", textAlign: "center" }}>{d}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {mySlots.map((slot) => (
+                      {TIMETABLE_SLOTS.map((slot) => (
                         <tr key={slot.id}>
-                          <td data-label="Course">{slot.courseCode} — {slot.courseName}</td>
-                          <td data-label="Faculty">{slot.facultyName}</td>
-                          <td data-label="Day & Time">{slot.day} {slot.startTime}–{slot.endTime}</td>
-                          <td data-label="Room">{slot.room}</td>
-                          <td data-label="Credits">{slot.credits || 3}</td>
-                          <td data-label="Action">
-                            <button
-                              className="button secondary"
-                              style={{ fontSize: "12px", padding: "4px 10px" }}
-                              onClick={() => handleDrop(slot.id)}
-                              id={`drop-slot-${slot.id}`}
-                            >
-                              🗑️ Drop
-                            </button>
+                          <td style={{ padding: "10px 14px", border: "1px solid #E5E0D8", fontWeight: 700, color: "#4B5563" }}>
+                            {slot.label}
                           </td>
+                          {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => {
+                            const matchingApps = allocatedApps.filter((app) => {
+                              const offering = offerings.find((o) => o.id === app.offeringId);
+                              if (!offering) return false;
+                              return offering.day === day && offering.slotId === slot.id;
+                            });
+
+                            return (
+                              <td key={day} style={{ padding: "8px", border: "1px solid #E5E0D8", textAlign: "center", verticalAlign: "top" }}>
+                                {matchingApps.map((app) => {
+                                  const offering = offerings.find((o) => o.id === app.offeringId);
+                                  return (
+                                    <div
+                                      key={app.id}
+                                      style={{
+                                        padding: "6px 8px",
+                                        borderRadius: "6px",
+                                        background: "#FDF8F6",
+                                        border: "1px solid #C85A32",
+                                        color: "#111827",
+                                        fontWeight: 600,
+                                        fontSize: "12px",
+                                      }}
+                                    >
+                                      <div>{offering?.subjectName || "Selected Course"}</div>
+                                      <div style={{ fontSize: "11px", color: "#4B5563" }}>{offering?.teacherName}</div>
+                                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#C85A32", marginTop: "2px" }}>
+                                        {app.status.toUpperCase()}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </>
+              )}
+            </div>
           )}
         </>
-      )}
-
-      {/* ── BROWSE SLOTS ── */}
-      {!loading && activeTab === "browse" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {/* Filter Bar */}
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--muted)" }}>Filter:</span>
-            {(["all", "lecture", "lab", "elective"] as FilterType[]).map((f) => (
-              <button
-                key={f}
-                className={`button ${filter === f ? "" : "secondary"}`}
-                style={{ fontSize: "13px", padding: "6px 12px" }}
-                onClick={() => setFilter(f)}
-                id={`ffcs-filter-${f}`}
-              >
-                {f === "all" ? "📚 All" : f === "lecture" ? "🎓 Lectures" : f === "lab" ? "🔬 Labs" : "⭐ Electives"}
-              </button>
-            ))}
-            <span style={{ marginLeft: "auto", fontSize: "13px", color: "var(--muted)" }}>
-              {browseSlots.length} slots available
-            </span>
-          </div>
-
-          {browseSlots.length === 0 ? (
-            <div className="card" style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-              No slots match this filter. The admin may not have published the timetable yet.
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Course</th>
-                    <th>Faculty</th>
-                    <th>Day &amp; Time</th>
-                    <th>Room</th>
-                    <th>Type</th>
-                    <th>Credits</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {browseSlots.map((slot) => {
-                    const isRegistered = registeredIds.has(slot.id);
-                    return (
-                      <tr key={slot.id} style={{ opacity: isRegistered ? 0.7 : 1 }}>
-                        <td data-label="Course">
-                          <div style={{ fontWeight: 600 }}>{slot.courseCode}</div>
-                          <div style={{ fontSize: "12px", color: "var(--muted)" }}>{slot.courseName}</div>
-                        </td>
-                        <td data-label="Faculty">{slot.facultyName}</td>
-                        <td data-label="Day & Time">{slot.day} {slot.startTime}–{slot.endTime}</td>
-                        <td data-label="Room">{slot.room}</td>
-                        <td data-label="Type">
-                          <span style={{
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            background: slot.type === "lab" ? "#dbeafe" : slot.isElective ? "#fef3c7" : "#dcfce7",
-                            color: slot.type === "lab" ? "#1d4ed8" : slot.isElective ? "#d97706" : "#166534",
-                          }}>
-                            {slot.type === "lab" ? "🔬 Lab" : slot.isElective ? "⭐ Elective" : "🎓 Lecture"}
-                          </span>
-                        </td>
-                        <td data-label="Credits">{slot.credits || 3}</td>
-                        <td data-label="Action">
-                          {isRegistered ? (
-                            <span style={{ color: "var(--accent-2)", fontWeight: 600, fontSize: "13px" }}>✅ Registered</span>
-                          ) : (
-                            <button
-                              className="button"
-                              style={{ fontSize: "12px", padding: "5px 12px" }}
-                              onClick={() => handleRegister(slot.id)}
-                              disabled={registering === slot.id}
-                              id={`register-slot-${slot.id}`}
-                            >
-                              {registering === slot.id ? "…" : "➕ Register"}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Slot detail modal */}
-      {selectedSlot && (
-        <div
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999,
-          }}
-          onClick={() => setSelectedSlot(null)}
-        >
-          <div
-            className="card"
-            style={{ maxWidth: "380px", width: "100%", gap: "14px", cursor: "default" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="section-title">
-              <h3 style={{ margin: 0 }}>📋 Slot Details</h3>
-              <button className="button secondary" onClick={() => setSelectedSlot(null)} style={{ padding: "4px 10px" }}>✕</button>
-            </div>
-            <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
-              <tbody>
-                {[
-                  ["Course", `${selectedSlot.courseCode} — ${selectedSlot.courseName}`],
-                  ["Faculty", selectedSlot.facultyName],
-                  ["Room", selectedSlot.room],
-                  ["Day", selectedSlot.day],
-                  ["Time", `${selectedSlot.startTime} – ${selectedSlot.endTime}`],
-                  ["Type", selectedSlot.type.toUpperCase()],
-                  ["Credits", String(selectedSlot.credits || 3)],
-                ].map(([k, v]) => (
-                  <tr key={k} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td style={{ padding: "8px", fontWeight: 600, color: "var(--muted)", width: "80px" }}>{k}</td>
-                    <td style={{ padding: "8px" }}>{v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!registeredIds.has(selectedSlot.id) && (
-              <button
-                className="button"
-                style={{ width: "100%" }}
-                onClick={() => { handleRegister(selectedSlot.id); setSelectedSlot(null); }}
-                id={`modal-register-${selectedSlot.id}`}
-              >
-                ➕ Register for this Slot
-              </button>
-            )}
-          </div>
-        </div>
       )}
     </div>
   );
