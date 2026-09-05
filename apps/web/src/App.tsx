@@ -337,7 +337,7 @@ function MainApp() {
         </aside>
         <main className="main">
           <Routes>
-            <Route path="/teacher/dashboard" element={<DashboardPage />} />
+            <Route path="/teacher/dashboard" element={<DashboardPage userRole="teacher" userName={user.name} />} />
             <Route path="/teacher/attendance" element={<AttendancePage />} />
             <Route path="/teacher/sessions" element={<SessionsPage />} />
             <Route path="/teacher/people" element={<PeoplePage />} />
@@ -386,7 +386,7 @@ function MainApp() {
         </aside>
         <main className="main">
           <Routes>
-            <Route path="/admin/overview" element={<DashboardPage />} />
+            <Route path="/admin/overview" element={<DashboardPage userRole="admin" userName={user.name} />} />
             <Route path="/admin/branches" element={<BranchesPage />} />
             <Route path="/admin/students" element={<StudentsPage />} />
             <Route path="/admin/teachers" element={<TeachersPage />} />

@@ -961,27 +961,44 @@ export async function createLibraryMaterial(payload: {
   let fileName = payload.file.name;
   let fileSize = payload.file.size;
 
-  // Try Cloudinary unsigned upload (preset: "ml_default" is common; adjust if needed)
+  // Try Cloudinary unsigned upload if credentials are provided
   try {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "demo";
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
-    const formData = new FormData();
-    formData.append("file", payload.file);
-    formData.append("upload_preset", uploadPreset);
-    const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-      method: "POST",
-      body: formData,
-    });
-    if (resp.ok) {
-      const result = await resp.json();
-      fileUrl = result.secure_url || result.url || "";
-      fileName = result.original_filename || fileName;
-      fileSize = result.bytes || fileSize;
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    if (cloudName && uploadPreset) {
+      const formData = new FormData();
+      formData.append("file", payload.file);
+      formData.append("upload_preset", uploadPreset);
+      const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        fileUrl = result.secure_url || result.url || "";
+        fileName = result.original_filename || fileName;
+        fileSize = result.bytes || fileSize;
+      }
     }
-  } catch {
-    /* If Cloudinary is not configured, use a local object URL as fallback */
-    fileUrl = URL.createObjectURL(payload.file);
+  } catch (err) {
+    console.warn("Cloudinary upload notice:", err);
   }
+
+  // Fallback to Data URL if Cloudinary is not configured or failed
+  if (!fileUrl) {
+    fileUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string) || "");
+      reader.onerror = () => resolve(URL.createObjectURL(payload.file));
+      reader.readAsDataURL(payload.file);
+    });
+  }
+
+  const fileType = fileName.includes(".")
+    ? fileName.split(".").pop() || "pdf"
+    : payload.file.type
+    ? payload.file.type.split("/").pop() || "pdf"
+    : "pdf";
 
   const newMaterial: LibraryMaterial = {
     id: `lib-${Date.now()}`,
@@ -995,6 +1012,7 @@ export async function createLibraryMaterial(payload: {
     fileUrl,
     fileName,
     fileSize,
+    fileType,
     createdAt: new Date().toISOString(),
   };
 
