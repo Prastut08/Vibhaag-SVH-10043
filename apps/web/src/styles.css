@@ -23,6 +23,165 @@ body {
   min-height: 100vh;
 }
 
+.admin-login-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(390px, 0.65fr);
+  min-height: 100vh;
+  background: var(--bg);
+  color: #fff;
+}
+
+.admin-login-visual {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  padding: 56px 7vw;
+  background: #f8dfe1;
+}
+
+.admin-login-visual::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(28, 26, 25, 0.12), rgba(28, 26, 25, 0.08) 55%, rgba(28, 26, 25, 0.45));
+  content: "";
+  pointer-events: none;
+}
+
+.visual-network {
+  position: absolute;
+  width: 75%;
+  height: 55%;
+  border: 1px solid rgba(255, 107, 44, 0.22);
+  transform: rotate(-18deg) skewX(-12deg);
+  opacity: 0.75;
+}
+
+.network-one { top: 20%; left: 2%; box-shadow: 50px 30px 0 -49px #ff6b2c, 120px 90px 0 -49px #ff6b2c, 220px -25px 0 -49px #ff6b2c; }
+.network-two { right: -8%; bottom: 13%; transform: rotate(22deg) skewX(14deg); opacity: 0.42; }
+
+.visual-brand {
+  position: absolute;
+  top: 44px;
+  left: 7vw;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  z-index: 2;
+}
+
+.visual-brand-mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.meeting-window {
+  position: relative;
+  z-index: 1;
+  width: min(600px, 100%);
+  margin: 0 auto 48px;
+  padding: 13px;
+  border: 1px solid #8e563a;
+  border-radius: 10px;
+  background: #211d1a;
+  box-shadow: 0 0 28px rgba(255, 107, 44, 0.22);
+}
+
+.campus-artwork {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.campus-artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.meeting-toolbar,
+.meeting-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #c8d2df;
+  font-size: 10px;
+}
+
+.meeting-toolbar span { display: flex; align-items: center; gap: 6px; }
+.meeting-toolbar i { width: 35px; height: 8px; border-radius: 3px; background: var(--accent); }
+
+.meeting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin: 13px 0;
+}
+
+.meeting-grid span {
+  aspect-ratio: 1.35;
+  border: 1px solid #55473e;
+  border-radius: 5px;
+  background: radial-gradient(circle at 50% 40%, #5b8c7d 0 12%, #3a3029 13% 38%, #211d1a 39%);
+}
+
+.meeting-controls { justify-content: center; gap: 10px; }
+.meeting-controls b { width: 10px; height: 10px; border-radius: 50%; background: #6c7c8c; }
+.meeting-controls .end-call { width: 24px; border-radius: 5px; background: #dc4040; }
+
+.visual-copy,
+.visual-footer { position: relative; z-index: 2; }
+.visual-copy { max-width: 600px; margin: 0 auto; }
+.visual-copy h2 { margin: 0 0 10px; font-size: clamp(25px, 3vw, 38px); line-height: 1.12; }
+.visual-copy p { margin: 0; color: #9ca8b7; font-size: 14px; }
+.visual-footer { position: absolute; bottom: 36px; left: 7vw; color: #718094; font-size: 12px; }
+
+.admin-login-panel {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 40px;
+  background: var(--bg);
+}
+
+.admin-login-panel .reference-login-card {
+  width: min(380px, 100%);
+  border: 0;
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: 0 24px 60px -40px var(--shadow);
+}
+
+.admin-login-panel .reference-login-heading { text-align: left; }
+.admin-login-panel .formal-login-emblem { margin-left: 0; }
+.admin-login-panel .reference-login-heading h1 { color: var(--ink); font-size: 32px; }
+.admin-login-panel .reference-login-heading p { color: var(--accent-2); }
+.admin-login-panel .reference-login-form .input { color: var(--muted); }
+.admin-login-panel .reference-login-form .input span { display: flex; align-items: center; gap: 6px; }
+.admin-login-panel .reference-login-form .input input { border-color: var(--line); background: #fffaf3; color: var(--ink); }
+.admin-login-panel .reference-login-button { background: var(--accent-2); }
+.admin-login-panel .reference-login-button:hover { background: #185746; }
+
+@media (max-width: 800px) {
+  .admin-login-screen { grid-template-columns: 1fr; }
+  .admin-login-visual { min-height: 430px; padding: 90px 28px 40px; }
+  .visual-brand { top: 28px; left: 28px; }
+  .visual-footer { bottom: 20px; left: 28px; }
+  .admin-login-panel { min-height: auto; padding: 40px 24px 56px; }
+}
+
 .portal-container {
   min-height: 100vh;
   display: flex;
@@ -104,6 +263,98 @@ body {
 .portal-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+}
+
+.reference-login-shell {
+  min-height: 100vh;
+  padding: 24px;
+  background: #faf6ee;
+}
+
+.reference-login-card {
+  width: min(335px, 100%);
+  padding: 40px 26px 25px;
+  border: 1px solid #eadfce;
+  border-radius: 19px;
+  background: #fffaf2;
+  box-shadow: 0 18px 35px rgba(126, 102, 66, 0.08);
+}
+
+.reference-login-heading {
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.formal-login-emblem {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  margin: 0 auto 14px;
+  border: 2px solid #c99a3e;
+  border-radius: 50%;
+  background: #fff7df;
+  color: #1f476b;
+  box-shadow: 0 4px 10px rgba(31, 71, 107, 0.12);
+}
+
+.reference-login-heading h1 {
+  margin: 0 0 8px;
+  color: #101828;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.reference-login-heading p {
+  margin: 0;
+  color: #4f46e5;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reference-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reference-login-form .input {
+  gap: 6px;
+  color: #4b5563;
+  font-size: 11px;
+}
+
+.reference-login-form .input span {
+  font-weight: 500;
+}
+
+.reference-login-form .input input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cfd9eb;
+  border-radius: 5px;
+  background: #e8f0fd;
+  color: #111827;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.reference-login-form .input input:focus {
+  outline: 2px solid #c7c2ff;
+  outline-offset: 1px;
+}
+
+.reference-login-button {
+  width: 100%;
+  margin-top: 1px;
+  padding: 10px;
+  border-radius: 5px;
+  background: #4f46e5;
+  font-size: 11px;
+}
+
+.reference-login-button:hover {
+  background: #4338ca;
 }
 
 .card-icon {

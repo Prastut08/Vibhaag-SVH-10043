@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { verifyPortalLogin } from "../lib/api";
@@ -55,16 +56,19 @@ export default function AdminLoginPage({ onAuthSuccess }: AdminLoginPageProps) {
   }
 
   return (
-    <div className="login-shell">
-      <div className="login-card fade-in" style={{ maxWidth: "420px", width: "100%", padding: "32px" }}>
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "800", color: "#111827", marginBottom: "6px" }}>
-            Campus Hub
-          </h1>
-          <p style={{ fontSize: "16px", fontWeight: "600", color: "#4f46e5" }}>Admin Login</p>
-        </div>
+    <div className="admin-login-screen">
+      <section className="admin-login-visual" aria-label="Vibhaag campus and students">
+        <div className="campus-artwork"><img src="/loginFirstPage.jpeg" alt="Vibhaag campus and students" /></div>
+      </section>
+      <section className="admin-login-panel">
+        <div className="login-card fade-in reference-login-card">
+          <div className="reference-login-heading">
+            <div className="formal-login-emblem" aria-hidden="true"><ShieldCheck size={25} /></div>
+            <h1>Welcome back</h1>
+            <p>Vibhaag Admin Login</p>
+          </div>
 
-        {error && (
+          {error && (
           <div
             style={{
               padding: "12px 16px",
@@ -79,56 +83,37 @@ export default function AdminLoginPage({ onAuthSuccess }: AdminLoginPageProps) {
           >
             {error}
           </div>
-        )}
+          )}
 
-        <form onSubmit={handleSubmit}>
-          <label className="input" style={{ marginBottom: "16px", display: "block" }}>
-            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "14px" }}>
-              Email
-            </span>
+          <form onSubmit={handleSubmit} className="reference-login-form">
+          <label className="input">
+            <span><Mail size={13} /> Email</span>
             <input
               type="email"
               placeholder="e.g. ileshkumar975@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #d1d5db" }}
             />
           </label>
 
-          <label className="input" style={{ marginBottom: "24px", display: "block" }}>
-            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "14px" }}>
-              Password
-            </span>
+          <label className="input">
+            <span><LockKeyhole size={13} /> Password</span>
             <input
               type="password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #d1d5db" }}
             />
           </label>
 
-          <button
-            type="submit"
-            className="button"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "12px",
-              background: "#4f46e5",
-              color: "#ffffff",
-              fontWeight: 600,
-              borderRadius: "6px",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
+          <button type="submit" className="button reference-login-button" disabled={loading}>
             {loading ? "Authenticating..." : "Login"}
           </button>
-        </form>
-      </div>
+          </form>
+        </div>
+      </section>
     </div>
   );
 }
