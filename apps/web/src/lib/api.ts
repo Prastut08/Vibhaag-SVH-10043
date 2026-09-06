@@ -6,6 +6,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   serverTimestamp,
@@ -23,15 +24,29 @@ import type { AuthResponse } from "@vibhaag/shared";
 // AUTHENTICATION & API BASE URL RESOLUTION
 // ----------------------------------------------------
 const getApiBaseUrl = (): string => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) return envUrl;
+  const envUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
   if (typeof window !== "undefined" && window.location && window.location.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:4000`;
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return `${window.location.protocol}//${window.location.hostname}:4000`;
+    }
   }
   return "http://localhost:4000";
 };
 
 export const API_BASE = getApiBaseUrl();
+
+async function safeParseJsonResponse(res: Response): Promise<any> {
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("Unable to connect to backend server. HTML response returned.");
+  }
+  try {
+    return await res.json();
+  } catch {
+    throw new Error("Unable to connect to backend server. Invalid JSON response.");
+  }
+}
 
 // Role-based Firestore user authentication & collection storage
 export async function loginRoleBased(email: string, password: string, userType: "student" | "faculty" | "admin") {
@@ -158,7 +173,7 @@ export async function fetchMe() {
     },
   });
 
-  const data = await res.json();
+  const data = await safeParseJsonResponse(res);
   if (!res.ok) {
     throw new Error(data.error || "Failed to verify Campus Hub user profile");
   }
@@ -184,14 +199,20 @@ export async function verifyPortalLogin(expectedRole: "admin" | "student" | "tea
       body: JSON.stringify({ expectedRole, identifier }),
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res);
     if (!res.ok) {
       throw new Error(data.error || "Authentication failed");
     }
 
     return data;
   } catch (err: any) {
-    if (err.name === "TypeError" || err.message?.includes("fetch") || err.message?.includes("Failed to fetch")) {
+    if (
+      err.name === "TypeError" ||
+      err.message?.includes("fetch") ||
+      err.message?.includes("Failed to fetch") ||
+      err.message?.includes("HTML response") ||
+      err.message?.includes("Invalid JSON")
+    ) {
       throw new Error("Unable to connect to the server. Please try again.");
     }
     throw err;
@@ -1393,4 +1414,12 @@ export async function updateTeacherFfcsApplicationStatus(id: string, status: "al
   }
   return data;
 }
+
+export async function deleteLibraryMaterial(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, "library-materials", id));
+  } catch {
+  }
+}
+
 
