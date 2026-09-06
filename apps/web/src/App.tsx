@@ -49,11 +49,11 @@ import StudentLibraryPage from "./pages/StudentLibraryPage";
 import FacultyLeavePage from "./pages/FacultyLeavePage";
 import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
-import FacultyAISummarizerPage from "./pages/FacultyAISummarizerPage";
 import FacultyAcademicEventsPage from "./pages/FacultyAcademicEventsPage";
 import FacultyAnnouncementsPage from "./pages/FacultyAnnouncementsPage";
 import StudentsPage from "./pages/StudentsPage";
 import TeachersPage from "./pages/TeachersPage";
+import FloatingChatbot from "./FloatingChatbot";
 
 const adminNavItems = [
   { to: "/admin/overview", label: "Overview", icon: BarChart3 },
@@ -76,7 +76,6 @@ const teacherNavItems = [
   { to: "/teacher/leave", label: "Leave", icon: FileText },
   { to: "/teacher/classroom", label: "Classroom", icon: School },
   { to: "/teacher/library", label: "Library", icon: Library },
-  { to: "/teacher/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
   { to: "/teacher/events", label: "Academic Events", icon: BookOpen },
 ];
 
@@ -90,7 +89,6 @@ const facultyNavItems = [
   { to: "/faculty/leave", label: "Leave", icon: FileText },
   { to: "/faculty/classroom", label: "Classroom", icon: School },
   { to: "/faculty/library", label: "Library", icon: Library },
-  { to: "/faculty/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
   { to: "/faculty/events", label: "Academic Events", icon: BookOpen },
 ];
 
@@ -258,6 +256,7 @@ function MainApp() {
             <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
           </Routes>
         </main>
+        <FloatingChatbot />
       </div>
     );
   }
@@ -309,12 +308,12 @@ function MainApp() {
             <Route path="/teacher/leave" element={<FacultyLeavePage />} />
             <Route path="/teacher/classroom" element={<FacultyClassroomPage />} />
             <Route path="/teacher/library" element={<FacultyLibraryPage />} />
-            <Route path="/teacher/ai-summarizer" element={<FacultyAISummarizerPage />} />
             <Route path="/teacher/events" element={<FacultyAcademicEventsPage />} />
             <Route path="/" element={<Navigate to="/teacher/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/teacher/dashboard" replace />} />
           </Routes>
         </main>
+        <FloatingChatbot />
       </div>
     );
   }
@@ -371,6 +370,7 @@ function MainApp() {
             <Route path="*" element={<Navigate to="/admin/overview" replace />} />
           </Routes>
         </main>
+        <FloatingChatbot />
       </div>
     );
   }
