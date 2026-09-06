@@ -49,11 +49,11 @@ import StudentLibraryPage from "./pages/StudentLibraryPage";
 import FacultyLeavePage from "./pages/FacultyLeavePage";
 import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
-import FacultyAISummarizerPage from "./pages/FacultyAISummarizerPage";
 import FacultyAcademicEventsPage from "./pages/FacultyAcademicEventsPage";
+import FacultyAnnouncementsPage from "./pages/FacultyAnnouncementsPage";
 import StudentsPage from "./pages/StudentsPage";
 import TeachersPage from "./pages/TeachersPage";
-import TeacherClassesPage from "./pages/TeacherClassesPage";
+import FloatingChatbot from "./FloatingChatbot";
 
 const adminNavItems = [
   { to: "/admin/overview", label: "Overview", icon: BarChart3 },
@@ -69,27 +69,26 @@ const adminNavItems = [
 
 const teacherNavItems = [
   { to: "/teacher/dashboard", label: "Faculty Hub", icon: BarChart3 },
-  { to: "/teacher/classes", label: "My Classes", icon: School },
+  { to: "/teacher/announcements", label: "Announcements", icon: Megaphone },
   { to: "/teacher/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/teacher/sessions", label: "Timetable", icon: CalendarDays },
   { to: "/teacher/ffcs", label: "FFCS", icon: Grid },
   { to: "/teacher/leave", label: "Leave", icon: FileText },
   { to: "/teacher/classroom", label: "Classroom", icon: School },
   { to: "/teacher/library", label: "Library", icon: Library },
-  { to: "/teacher/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
   { to: "/teacher/events", label: "Academic Events", icon: BookOpen },
 ];
 
 // ── Faculty nav
 const facultyNavItems = [
   { to: "/", label: "Overview", icon: BarChart3 },
+  { to: "/faculty/announcements", label: "Announcements", icon: Megaphone },
   { to: "/sessions", label: "Timetable", icon: CalendarDays },
   { to: "/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/ffcs", label: "FFCS", icon: Grid },
   { to: "/faculty/leave", label: "Leave", icon: FileText },
   { to: "/faculty/classroom", label: "Classroom", icon: School },
   { to: "/faculty/library", label: "Library", icon: Library },
-  { to: "/faculty/ai-summarizer", label: "AI Summarizer", icon: MessageSquare },
   { to: "/faculty/events", label: "Academic Events", icon: BookOpen },
 ];
 
@@ -217,7 +216,7 @@ function MainApp() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <div className="brand-icon">V</div>
+              <div className="brand-icon"><img src="/logo.png" alt="Vibhaag" /></div>
               <div>
                 <h1 className="brand-title">Vibhaag</h1>
                 <p className="user-role-text">{user.name} (Student)</p>
@@ -257,6 +256,7 @@ function MainApp() {
             <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
           </Routes>
         </main>
+        <FloatingChatbot />
       </div>
     );
   }
@@ -272,7 +272,7 @@ function MainApp() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <div className="brand-icon">V</div>
+              <div className="brand-icon"><img src="/logo.png" alt="Vibhaag" /></div>
               <div>
                 <h1 className="brand-title">Vibhaag</h1>
                 <p className="user-role-text">{user.name} (Teacher)</p>
@@ -300,7 +300,7 @@ function MainApp() {
         <main className="main">
           <Routes>
             <Route path="/teacher/dashboard" element={<DashboardPage userRole="teacher" userName={user.name} />} />
-            <Route path="/teacher/classes" element={<TeacherClassesPage />} />
+            <Route path="/teacher/announcements" element={<FacultyAnnouncementsPage />} />
             <Route path="/teacher/attendance" element={<AttendancePage />} />
             <Route path="/teacher/sessions" element={<SessionsPage />} />
             <Route path="/teacher/people" element={<PeoplePage />} />
@@ -308,12 +308,12 @@ function MainApp() {
             <Route path="/teacher/leave" element={<FacultyLeavePage />} />
             <Route path="/teacher/classroom" element={<FacultyClassroomPage />} />
             <Route path="/teacher/library" element={<FacultyLibraryPage />} />
-            <Route path="/teacher/ai-summarizer" element={<FacultyAISummarizerPage />} />
             <Route path="/teacher/events" element={<FacultyAcademicEventsPage />} />
             <Route path="/" element={<Navigate to="/teacher/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/teacher/dashboard" replace />} />
           </Routes>
         </main>
+        <FloatingChatbot />
       </div>
     );
   }
@@ -329,7 +329,7 @@ function MainApp() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <div className="brand-icon">V</div>
+              <div className="brand-icon"><img src="/logo.png" alt="Vibhaag" /></div>
               <div>
                 <h1 className="brand-title">Vibhaag</h1>
                 <p className="user-role-text">{user.name} (Admin)</p>
@@ -370,6 +370,7 @@ function MainApp() {
             <Route path="*" element={<Navigate to="/admin/overview" replace />} />
           </Routes>
         </main>
+        <FloatingChatbot />
       </div>
     );
   }

@@ -7,7 +7,6 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-
   query,
   where,
   serverTimestamp,
@@ -26,33 +25,14 @@ import type { AuthResponse } from "@vibhaag/shared";
 // ----------------------------------------------------
 const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) {
-    if (envUrl.startsWith("http://") || envUrl.startsWith("https://")) {
-      return envUrl;
-    }
-    return `https://${envUrl}`;
-  }
+  if (envUrl) return envUrl;
   if (typeof window !== "undefined" && window.location && window.location.hostname) {
-    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-      return `${window.location.protocol}//${window.location.hostname}:4000`;
-    }
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
   }
   return "http://localhost:4000";
 };
 
 export const API_BASE = getApiBaseUrl();
-
-async function safeParseJsonResponse(res: Response): Promise<any> {
-  const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    throw new Error("Unable to connect to backend server. HTML response returned.");
-  }
-  try {
-    return await res.json();
-  } catch {
-    throw new Error("Unable to connect to backend server. Invalid JSON response.");
-  }
-}
 
 // Role-based Firestore user authentication & collection storage
 export async function loginRoleBased(email: string, password: string, userType: "student" | "faculty" | "admin") {
@@ -179,7 +159,7 @@ export async function fetchMe() {
     },
   });
 
-  const data = await safeParseJsonResponse(res);
+  const data = await res.json();
   if (!res.ok) {
     throw new Error(data.error || "Failed to verify Campus Hub user profile");
   }
@@ -205,20 +185,14 @@ export async function verifyPortalLogin(expectedRole: "admin" | "student" | "tea
       body: JSON.stringify({ expectedRole, identifier }),
     });
 
-    const data = await safeParseJsonResponse(res);
+    const data = await res.json();
     if (!res.ok) {
       throw new Error(data.error || "Authentication failed");
     }
 
     return data;
   } catch (err: any) {
-    if (
-      err.name === "TypeError" ||
-      err.message?.includes("fetch") ||
-      err.message?.includes("Failed to fetch") ||
-      err.message?.includes("HTML response") ||
-      err.message?.includes("Invalid JSON")
-    ) {
+    if (err.name === "TypeError" || err.message?.includes("fetch") || err.message?.includes("Failed to fetch")) {
       throw new Error("Unable to connect to the server. Please try again.");
     }
     throw err;
@@ -229,17 +203,17 @@ export async function verifyPortalLogin(expectedRole: "admin" | "student" | "tea
 // FIRESTORE COLLECTIONS & DATA persistance
 // ----------------------------------------------------
 
-// Helper to get all docs from a collection with fallback initial seed
 async function getCollectionDocs<T>(collectionName: string, initialSeedData: T[]): Promise<T[]> {
+  const cleanName = collectionName.replace(/^\/+/, "");
   try {
-    const colRef = collection(db, collectionName);
+    const colRef = collection(db, cleanName);
     const snapshot = await getDocs(colRef);
     if (snapshot.empty && initialSeedData.length > 0) {
       // Seed Firestore asynchronously
       for (const item of initialSeedData) {
         const id = (item as any)._id || (item as any).id;
         if (id) {
-          await setDoc(doc(db, collectionName, id), item as any);
+          await setDoc(doc(db, cleanName, id), item as any);
         } else {
           await addDoc(colRef, item as any);
         }
@@ -248,7 +222,7 @@ async function getCollectionDocs<T>(collectionName: string, initialSeedData: T[]
     }
     return snapshot.docs.map((doc) => ({ _id: doc.id, id: doc.id, ...doc.data() })) as unknown as T[];
   } catch (error) {
-    console.warn(`Firestore read error on [${collectionName}], using fallback:`, error);
+    console.warn(`Firestore read error on [${cleanName}], using fallback:`, error);
     return initialSeedData;
   }
 }
@@ -287,8 +261,70 @@ export async function fetchAttendance(from?: string, to?: string) {
   return getCollectionDocs("/attendance", []);
 }
 
-export async function fetchAnnouncements() {
-  return getCollectionDocs("/announcements", []);
+export type Announcement = {
+  _id?: string;
+  id?: string;
+  title: string;
+  body: string;
+  audience: "all" | "department" | "batch";
+  audienceRef?: string;
+  authorName?: string;
+  authorRole?: string;
+  createdAt: string;
+};
+
+export async function fetchAnnouncements(): Promise<Announcement[]> {
+  const list: Announcement[] = [];
+
+  // 1. Try Express API (uses Admin SDK with full Firestore access)
+  try {
+    const res = await fetch(`${API_BASE}/announcements`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        data.forEach((item: Announcement) => {
+          const key = item._id || item.id;
+          if (key && !list.some((a) => (a._id || a.id) === key)) {
+            list.push(item);
+          }
+        });
+      }
+    }
+  } catch (apiErr) {
+    console.warn("Express API fetch announcements notice:", apiErr);
+  }
+
+  // 2. Try Client Firestore SDK directly
+  try {
+    const snap = await getDocs(collection(db, "announcements"));
+    if (!snap.empty) {
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const key = d.id;
+        if (!list.some((a) => (a._id || a.id) === key)) {
+          list.push({ _id: d.id, id: d.id, ...data } as Announcement);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("Firestore client fetch announcements notice:", err);
+  }
+
+  // 3. Merge with localStorage custom items if cached
+  try {
+    const raw = localStorage.getItem("vibhaag-custom-announcements");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      stored.forEach((item: Announcement) => {
+        const itemKey = item._id || item.id;
+        if (itemKey && !list.some((a) => (a._id || a.id) === itemKey)) {
+          list.push(item);
+        }
+      });
+    }
+  } catch { }
+
+  return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 }
 
 export async function createAnnouncement(payload: {
@@ -296,16 +332,87 @@ export async function createAnnouncement(payload: {
   body: string;
   audience: "all" | "department" | "batch";
   audienceRef?: string;
-}) {
+  authorName?: string;
+  authorRole?: string;
+}): Promise<Announcement> {
+  const docData = {
+    title: payload.title,
+    body: payload.body,
+    audience: payload.audience || "all",
+    audienceRef: payload.audienceRef || "",
+    authorName: payload.authorName || "Faculty Member",
+    authorRole: payload.authorRole || "faculty",
+    createdAt: new Date().toISOString(),
+  };
+
+  let annId = "";
+
+  // 1. Send to Express API (uses Firebase Admin SDK service account for 100% guaranteed write to Firestore)
   try {
-    const docRef = await addDoc(collection(db, "announcements"), {
-      ...payload,
-      createdAt: new Date().toISOString(),
+    const res = await fetch(`${API_BASE}/announcements`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(docData),
     });
-    return { _id: docRef.id, ...payload };
-  } catch (e) {
-    return { _id: "an-" + Date.now(), ...payload, createdAt: new Date().toISOString() };
+    if (res.ok) {
+      const created = await res.json();
+      annId = created._id || created.id;
+      console.log("Successfully created Firestore announcement via Admin API:", annId);
+    }
+  } catch (apiErr) {
+    console.warn("Express API create announcement notice:", apiErr);
   }
+
+  // 2. Primary/Fallback write using Client Firestore SDK
+  if (!annId) {
+    try {
+      const docRef = await addDoc(collection(db, "announcements"), docData);
+      annId = docRef.id;
+      console.log("Successfully created Firestore announcement via Client SDK:", annId);
+    } catch (e) {
+      console.warn("Firestore addDoc announcement notice:", e);
+      annId = "an-" + Date.now();
+    }
+  }
+
+  const newAnnouncement: Announcement = { _id: annId, id: annId, ...docData };
+
+  // 3. Save to Local Storage cache for offline instant display
+  try {
+    const raw = localStorage.getItem("vibhaag-custom-announcements");
+    const existing = raw ? JSON.parse(raw) : [];
+    localStorage.setItem("vibhaag-custom-announcements", JSON.stringify([newAnnouncement, ...existing]));
+  } catch { }
+
+  return newAnnouncement;
+}
+
+export async function deleteAnnouncement(id: string): Promise<void> {
+  if (!id) return;
+
+  // 1. Delete via Express Admin API
+  try {
+    await fetch(`${API_BASE}/announcements/${id}`, { method: "DELETE" });
+  } catch (e) {
+    console.warn("Express API delete announcement notice:", e);
+  }
+
+  // 2. Delete via Client Firestore SDK
+  try {
+    await deleteDoc(doc(db, "announcements", id));
+  } catch (e) {
+    console.warn("Firestore delete announcement notice:", e);
+  }
+
+  // 3. Remove from localStorage cache
+  try {
+    const raw = localStorage.getItem("vibhaag-custom-announcements");
+    if (raw) {
+      const existing: Announcement[] = JSON.parse(raw);
+      const filtered = existing.filter((item) => (item._id || item.id) !== id);
+      localStorage.setItem("vibhaag-custom-announcements", JSON.stringify(filtered));
+    }
+  } catch { }
 }
 
 export async function fetchStudentSchedule() {
@@ -345,8 +452,16 @@ export async function createLeaveRequest(sessionId: string, date: string, reason
   }
 }
 
+export type LeaveRequest = {
+  _id: string;
+  date: string;
+  status: string;
+  reason: string;
+  studentName?: string;
+};
+
 export async function fetchLeaveRequests() {
-  return getCollectionDocs("/leave-requests", []);
+  return getCollectionDocs<LeaveRequest>("/leave-requests", []);
 }
 
 export async function updateLeaveRequest(id: string, status: "approved" | "denied") {
@@ -355,6 +470,34 @@ export async function updateLeaveRequest(id: string, status: "approved" | "denie
     return { _id: id, status };
   } catch (e) {
     return { _id: id, status };
+  }
+}
+
+export type AcademicEvent = {
+  _id: string;
+  title: string;
+  date: string;
+  description: string;
+  createdAt: string;
+};
+
+export async function fetchAcademicEvents(): Promise<AcademicEvent[]> {
+  return getCollectionDocs<AcademicEvent>("/academic-events", []);
+}
+
+export async function createAcademicEvent(payload: {
+  title: string;
+  date: string;
+  description: string;
+}): Promise<AcademicEvent> {
+  try {
+    const docRef = await addDoc(collection(db, "academic-events"), {
+      ...payload,
+      createdAt: new Date().toISOString(),
+    });
+    return { _id: docRef.id, ...payload, createdAt: new Date().toISOString() };
+  } catch (e) {
+    return { _id: "evt-" + Date.now(), ...payload, createdAt: new Date().toISOString() };
   }
 }
 
@@ -1185,10 +1328,9 @@ export async function createLibraryMaterial(payload: {
 export async function deleteLibraryMaterial(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, "library-materials", id));
-  } catch (err) {
-    console.warn("Firestore deleteDoc notice:", err);
+  } catch {
+    // ignore Firestore delete errors
   }
-
   try {
     const raw = localStorage.getItem("vibhaag-custom-library-materials");
     if (raw) {
@@ -1196,18 +1338,14 @@ export async function deleteLibraryMaterial(id: string): Promise<void> {
       const filtered = stored.filter((item: LibraryMaterial) => (item._id || item.id) !== id);
       localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(filtered));
     }
-  } catch { }
-
+  } catch {
+    // ignore localStorage errors
+  }
   try {
-    const dbReq = indexedDB.open("vibhaag-library-files", 1);
-    dbReq.onsuccess = () => {
-      const idb = dbReq.result;
-      if (idb.objectStoreNames.contains("files")) {
-        const tx = idb.transaction("files", "readwrite");
-        tx.objectStore("files").delete(id);
-      }
-    };
-  } catch { }
+    await deleteFileFromIndexedDB(id);
+  } catch {
+    // ignore IndexedDB delete errors
+  }
 }
 
 export async function fetchAdminFfcsWindows() {
@@ -1467,7 +1605,7 @@ export async function updateTeacherFfcsApplicationStatus(id: string, status: "al
   if (!res.ok) {
     throw new Error(data.error || "Failed to update application status");
   }
-  return data as { success: boolean; id: string; status: string; classId: string | null };
+  return data;
 }
 
 export async function fetchTeacherClasses(): Promise<TeacherClass[]> {
