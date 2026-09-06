@@ -44,11 +44,18 @@ export default function FfcsFacultyPage() {
     setProcessingId(appId);
     setMessage(null);
     try {
-      await updateTeacherFfcsApplicationStatus(appId, status);
-      setMessage({
-        text: `Student selection ${status === "allocated" ? "ACCEPTED and added to student timetable" : "REJECTED"}!`,
-        type: "success",
-      });
+      const result = await updateTeacherFfcsApplicationStatus(appId, status);
+      if (status === "allocated" && result.classId) {
+        setMessage({
+          text: `✅ Student ACCEPTED! Class ID generated: ${result.classId} — Students in this offering share this Class ID. Upload library materials to this class from the Library page.`,
+          type: "success",
+        });
+      } else {
+        setMessage({
+          text: `Student selection ${status === "allocated" ? "ACCEPTED" : "REJECTED"}.`,
+          type: "success",
+        });
+      }
       loadTeacherData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to update status";
@@ -151,6 +158,7 @@ export default function FfcsFacultyPage() {
                       <th style={{ padding: "12px 16px", fontWeight: 700 }}>Student</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700 }}>Semester</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700 }}>Offering / Slot</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Class ID</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700 }}>Requested At</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700 }}>Status</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700, textAlign: "right" }}>Actions</th>
@@ -162,6 +170,15 @@ export default function FfcsFacultyPage() {
                         <td style={{ padding: "12px 16px", fontWeight: 600 }}>{app.studentName}</td>
                         <td style={{ padding: "12px 16px" }}>Sem {app.semester}</td>
                         <td style={{ padding: "12px 16px" }}>{app.offeringName || app.offeringId}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {(app as any).classId ? (
+                            <span style={{ fontSize: "11px", fontWeight: 700, background: "#EEF2FF", color: "#3730A3", padding: "2px 8px", borderRadius: "6px", fontFamily: "monospace" }}>
+                              {(app as any).classId}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#9CA3AF", fontSize: "12px" }}>—</span>
+                          )}
+                        </td>
                         <td style={{ padding: "12px 16px", color: "#6B7280", fontSize: "13px" }}>
                           {new Date(app.submittedAt).toLocaleString()}
                         </td>

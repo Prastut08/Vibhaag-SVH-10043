@@ -61,7 +61,6 @@ const adminNavItems = [
   { to: "/admin/teachers", label: "Teachers", icon: UserCheck },
   { to: "/admin/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/admin/sessions", label: "Timetable", icon: CalendarDays },
-  { to: "/admin/people", label: "People", icon: Users },
   { to: "/admin/engagement", label: "Engagement", icon: Megaphone },
   { to: "/admin/analytics", label: "Analytics", icon: Layers },
   { to: "/admin/ffcs", label: "FFCS", icon: Grid },
@@ -71,7 +70,6 @@ const teacherNavItems = [
   { to: "/teacher/dashboard", label: "Faculty Hub", icon: BarChart3 },
   { to: "/teacher/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/teacher/sessions", label: "Timetable", icon: CalendarDays },
-  { to: "/teacher/people", label: "People", icon: Users },
   { to: "/teacher/ffcs", label: "FFCS", icon: Grid },
   { to: "/teacher/leave", label: "Leave", icon: FileText },
   { to: "/teacher/classroom", label: "Classroom", icon: School },
@@ -215,9 +213,14 @@ function MainApp() {
     return (
       <div className="app-shell fade-in">
         <aside className="sidebar">
-          <div>
-            <h1>Vibhaag</h1>
-            <p>{user.name} (Student)</p>
+          <div className="sidebar-header">
+            <div className="sidebar-brand">
+              <div className="brand-icon">V</div>
+              <div>
+                <h1 className="brand-title">Vibhaag</h1>
+                <p className="user-role-text">{user.name} (Student)</p>
+              </div>
+            </div>
           </div>
           <nav className="nav-group">
             {studentNavItems.map((item) => (
@@ -231,9 +234,11 @@ function MainApp() {
               </NavLink>
             ))}
           </nav>
-          <button className="button secondary" onClick={handleLogout} style={{ marginTop: "auto" }}>
-            <LogOut size={16} /> Logout
-          </button>
+          <div className="sidebar-footer">
+            <button className="sidebar-logout-btn" onClick={handleLogout}>
+              <LogOut size={16} /> Logout
+            </button>
+          </div>
         </aside>
         <main className="main">
           <Routes>
@@ -263,9 +268,14 @@ function MainApp() {
     return (
       <div className="app-shell fade-in">
         <aside className="sidebar">
-          <div>
-            <h1>Vibhaag</h1>
-            <p>{user.name} (Teacher)</p>
+          <div className="sidebar-header">
+            <div className="sidebar-brand">
+              <div className="brand-icon">V</div>
+              <div>
+                <h1 className="brand-title">Vibhaag</h1>
+                <p className="user-role-text">{user.name} (Teacher)</p>
+              </div>
+            </div>
           </div>
           <nav className="nav-group">
             {teacherNavItems.map((item) => (
@@ -279,9 +289,11 @@ function MainApp() {
               </NavLink>
             ))}
           </nav>
-          <button className="button secondary" onClick={handleLogout} style={{ marginTop: "auto" }}>
-            <LogOut size={16} /> Logout
-          </button>
+          <div className="sidebar-footer">
+            <button className="sidebar-logout-btn" onClick={handleLogout}>
+              <LogOut size={16} /> Logout
+            </button>
+          </div>
         </aside>
         <main className="main">
           <Routes>
@@ -312,9 +324,14 @@ function MainApp() {
     return (
       <div className="app-shell fade-in">
         <aside className="sidebar">
-          <div>
-            <h1>Vibhaag</h1>
-            <p>{user.name} (Admin)</p>
+          <div className="sidebar-header">
+            <div className="sidebar-brand">
+              <div className="brand-icon">V</div>
+              <div>
+                <h1 className="brand-title">Vibhaag</h1>
+                <p className="user-role-text">{user.name} (Admin)</p>
+              </div>
+            </div>
           </div>
           <nav className="nav-group">
             {adminNavItems.map((item) => (
@@ -328,9 +345,11 @@ function MainApp() {
               </NavLink>
             ))}
           </nav>
-          <button className="button secondary" onClick={handleLogout} style={{ marginTop: "auto" }}>
-            <LogOut size={16} /> Logout
-          </button>
+          <div className="sidebar-footer">
+            <button className="sidebar-logout-btn" onClick={handleLogout}>
+              <LogOut size={16} /> Logout
+            </button>
+          </div>
         </aside>
         <main className="main">
           <Routes>
