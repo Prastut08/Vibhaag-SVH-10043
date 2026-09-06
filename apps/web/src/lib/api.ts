@@ -6,6 +6,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   serverTimestamp,
@@ -1393,4 +1394,12 @@ export async function updateTeacherFfcsApplicationStatus(id: string, status: "al
   }
   return data;
 }
+
+export async function deleteLibraryMaterial(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, "library-materials", id));
+  } catch {
+  }
+}
+
 
