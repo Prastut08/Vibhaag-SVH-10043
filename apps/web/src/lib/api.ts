@@ -957,7 +957,14 @@ export type TeacherClass = {
   teacherId: string;
   offeringId: string;
   subjectId?: string | null;
+  subjectCode?: string;
+  subjectName?: string;
+  day?: string;
+  slotId?: string;
+  startTime?: string;
+  endTime?: string;
   studentIds: string[];
+  studentCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -1476,3 +1483,53 @@ export async function fetchTeacherClasses(): Promise<TeacherClass[]> {
     return [];
   }
 }
+
+export interface TeacherTimetableSlotItem {
+  timetableId: string;
+  offeringId: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  day: string;
+  slotId: string;
+  startTime: string;
+  endTime: string;
+  classId: string | null;
+  capacity?: number;
+  seatsFilled?: number;
+  semester?: string | number;
+}
+
+export async function fetchTeacherTimetable(): Promise<TeacherTimetableSlotItem[]> {
+  const authHeader = await getAuthHeader();
+  try {
+    const res = await fetch(`${API_BASE}/teacher/timetable`, {
+      headers: { ...authHeader },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to fetch teacher timetable");
+    return (data.timetable || []) as TeacherTimetableSlotItem[];
+  } catch {
+    return [];
+  }
+}
+
+export interface ClassRosterStudent {
+  id: string;
+  name: string;
+  email: string;
+  enrollmentNumber: string;
+  department?: string;
+  batch?: string;
+}
+
+export async function fetchClassRoster(classId: string): Promise<{ class: any; students: ClassRosterStudent[] }> {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/classes/${encodeURIComponent(classId)}/roster`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to fetch class roster");
+  return data;
+}
+

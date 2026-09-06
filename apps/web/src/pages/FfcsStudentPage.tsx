@@ -400,6 +400,7 @@ export default function FfcsStudentPage() {
                               <td key={day} style={{ padding: "8px", border: "1px solid #E5E0D8", textAlign: "center", verticalAlign: "top" }}>
                                 {matchingApps.map((app) => {
                                   const offering = offerings.find((o) => o.id === app.offeringId);
+                                  const classIdVal = (app as any).classId || (offering as any)?.classId;
                                   return (
                                     <div
                                       key={app.id}
@@ -411,13 +412,20 @@ export default function FfcsStudentPage() {
                                         color: "#111827",
                                         fontWeight: 600,
                                         fontSize: "12px",
+                                        textAlign: "left",
                                       }}
                                     >
-                                      <div>{offering?.subjectName || "Selected Course"}</div>
+                                      <div style={{ fontWeight: 700 }}>{offering?.subjectName || "Selected Course"}</div>
                                       <div style={{ fontSize: "11px", color: "#4B5563" }}>{offering?.teacherName}</div>
-                                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#C85A32", marginTop: "2px" }}>
-                                        {app.status.toUpperCase()}
-                                      </div>
+                                      {classIdVal ? (
+                                        <div style={{ fontSize: "10px", fontWeight: 700, color: "#166534", marginTop: "2px", fontFamily: "monospace" }}>
+                                          Class ID: {classIdVal}
+                                        </div>
+                                      ) : (
+                                        <div style={{ fontSize: "10px", fontWeight: 700, color: "#C85A32", marginTop: "2px" }}>
+                                          ACCEPTED
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
