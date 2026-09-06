@@ -51,6 +51,7 @@ import FacultyClassroomPage from "./pages/FacultyClassroomPage";
 import FacultyLibraryPage from "./pages/FacultyLibraryPage";
 import FacultyAISummarizerPage from "./pages/FacultyAISummarizerPage";
 import FacultyAcademicEventsPage from "./pages/FacultyAcademicEventsPage";
+import FacultyAnnouncementsPage from "./pages/FacultyAnnouncementsPage";
 import StudentsPage from "./pages/StudentsPage";
 import TeachersPage from "./pages/TeachersPage";
 
@@ -68,6 +69,7 @@ const adminNavItems = [
 
 const teacherNavItems = [
   { to: "/teacher/dashboard", label: "Faculty Hub", icon: BarChart3 },
+  { to: "/teacher/announcements", label: "Announcements", icon: Megaphone },
   { to: "/teacher/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/teacher/sessions", label: "Timetable", icon: CalendarDays },
   { to: "/teacher/ffcs", label: "FFCS", icon: Grid },
@@ -81,6 +83,7 @@ const teacherNavItems = [
 // ── Faculty nav
 const facultyNavItems = [
   { to: "/", label: "Overview", icon: BarChart3 },
+  { to: "/faculty/announcements", label: "Announcements", icon: Megaphone },
   { to: "/sessions", label: "Timetable", icon: CalendarDays },
   { to: "/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/ffcs", label: "FFCS", icon: Grid },
@@ -298,6 +301,7 @@ function MainApp() {
         <main className="main">
           <Routes>
             <Route path="/teacher/dashboard" element={<DashboardPage userRole="teacher" userName={user.name} />} />
+            <Route path="/teacher/announcements" element={<FacultyAnnouncementsPage />} />
             <Route path="/teacher/attendance" element={<AttendancePage />} />
             <Route path="/teacher/sessions" element={<SessionsPage />} />
             <Route path="/teacher/people" element={<PeoplePage />} />
