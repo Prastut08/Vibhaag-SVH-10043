@@ -53,6 +53,7 @@ import FacultyAcademicEventsPage from "./pages/FacultyAcademicEventsPage";
 import FacultyAnnouncementsPage from "./pages/FacultyAnnouncementsPage";
 import StudentsPage from "./pages/StudentsPage";
 import TeachersPage from "./pages/TeachersPage";
+import TeacherClassesPage from "./pages/TeacherClassesPage";
 import FloatingChatbot from "./FloatingChatbot";
 
 const adminNavItems = [
@@ -69,6 +70,7 @@ const adminNavItems = [
 
 const teacherNavItems = [
   { to: "/teacher/dashboard", label: "Faculty Hub", icon: BarChart3 },
+  { to: "/teacher/classes", label: "My Classes", icon: BookOpen },
   { to: "/teacher/announcements", label: "Announcements", icon: Megaphone },
   { to: "/teacher/attendance", label: "Attendance", icon: ShieldCheck },
   { to: "/teacher/sessions", label: "Timetable", icon: CalendarDays },
@@ -300,6 +302,7 @@ function MainApp() {
         <main className="main">
           <Routes>
             <Route path="/teacher/dashboard" element={<DashboardPage userRole="teacher" userName={user.name} />} />
+            <Route path="/teacher/classes" element={<TeacherClassesPage />} />
             <Route path="/teacher/announcements" element={<FacultyAnnouncementsPage />} />
             <Route path="/teacher/attendance" element={<AttendancePage />} />
             <Route path="/teacher/sessions" element={<SessionsPage />} />

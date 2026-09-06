@@ -620,36 +620,42 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
 
   try {
     const result = await adminDb.runTransaction(async (transaction) => {
+      // ----------------------------------------------------
+      // PHASE 1 — ALL READS (Must execute before ANY writes!)
+      // ----------------------------------------------------
       const appRef = adminDb.collection("ffcsApplications").doc(id);
       const appSnap = await transaction.get(appRef);
       if (!appSnap.exists) {
         throw new Error("Application not found");
       }
-
       const appData = appSnap.data() as any;
+
       const offeringRef = adminDb.collection("ffcsOfferings").doc(appData.offeringId);
       const offeringSnap = await transaction.get(offeringRef);
-
       if (!offeringSnap.exists) {
         throw new Error("Offering not found");
       }
-
       const offeringData = offeringSnap.data() as any;
-      if (offeringData.teacherId !== uid) {
-        throw new Error("FORBIDDEN: You are not authorized to manage this student selection");
-      }
 
       const classDocId = `${uid}_${appData.offeringId}`;
       const classRef = adminDb.collection("classes").doc(classDocId);
       const classSnap = await transaction.get(classRef);
 
-      let classId: string | null = null;
-      if (classSnap.exists) {
-        classId = classSnap.data()?.classId || null;
+      const studentRef = adminDb.collection("students").doc(appData.studentId);
+      const studentSnap = await transaction.get(studentRef);
+
+      // ----------------------------------------------------
+      // PHASE 2 — VALIDATION
+      // ----------------------------------------------------
+      if (offeringData.teacherId !== uid) {
+        throw new Error("FORBIDDEN: You are not authorized to manage this student selection");
       }
 
+      let classId: string | null = classSnap.exists ? classSnap.data()?.classId || null : null;
+
+      // Idempotency check: if application already has target status, return cleanly
       if (appData.status === status) {
-        return { success: true, id, status, classId };
+        return { success: true, id, status, classId: appData.classId || classId };
       }
 
       let newClassId = classId;
@@ -661,10 +667,23 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
           const classData = classSnap.data() as any;
           newClassId = classData.classId;
           const currentStudentIds: string[] = classData.studentIds || [];
+          if (!currentStudentIds.includes(appData.studentId) && currentStudentIds.length >= capacity) {
+            throw new Error(`Class capacity reached (${capacity} students max). Cannot accept more students.`);
+          }
+        } else {
+          const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+          newClassId = "CLS-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+        }
+      }
+
+      // ----------------------------------------------------
+      // PHASE 3 — ALL WRITES (No reads allowed after this!)
+      // ----------------------------------------------------
+      if (status === "allocated") {
+        if (classSnap.exists) {
+          const classData = classSnap.data() as any;
+          const currentStudentIds: string[] = classData.studentIds || [];
           if (!currentStudentIds.includes(appData.studentId)) {
-            if (currentStudentIds.length >= capacity) {
-              throw new Error(`Class capacity reached (${capacity} students max). Cannot accept more students.`);
-            }
             const updatedStudentIds = [...currentStudentIds, appData.studentId];
             transaction.update(classRef, {
               studentIds: updatedStudentIds,
@@ -673,11 +692,10 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
             });
           }
         } else {
-          const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-          newClassId = "CLS-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
           transaction.set(classRef, {
             classId: newClassId,
             timetableId: offeringData.id || appData.offeringId,
+            offeringId: appData.offeringId,
             teacherId: uid,
             subjectId: offeringData.subjectId || appData.subjectId || "",
             subjectCode: offeringData.subjectCode || offeringData.subjectId || "",
@@ -700,8 +718,6 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
           updatedAt: new Date().toISOString(),
         });
 
-        const studentRef = adminDb.collection("students").doc(appData.studentId);
-        const studentSnap = await transaction.get(studentRef);
         if (studentSnap.exists && newClassId) {
           const sData = studentSnap.data();
           const currentClasses: string[] = sData?.classIds || [];
@@ -739,8 +755,9 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
       }
 
       transaction.update(appRef, {
-        status,
+        status: status === "allocated" ? "allocated" : status,
         classId: newClassId,
+        acceptedAt: status === "allocated" ? new Date().toISOString() : null,
         updatedAt: new Date().toISOString(),
       });
 
