@@ -619,77 +619,141 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
   }
 
   try {
-    const appRef = adminDb.collection("ffcsApplications").doc(id);
-    const appSnap = await appRef.get();
-    if (!appSnap.exists) {
-      return res.status(404).json({ error: "Application not found" });
-    }
+    const result = await adminDb.runTransaction(async (transaction) => {
+      const appRef = adminDb.collection("ffcsApplications").doc(id);
+      const appSnap = await transaction.get(appRef);
+      if (!appSnap.exists) {
+        throw new Error("Application not found");
+      }
 
-    const appData = appSnap.data() as any;
-    const offeringRef = adminDb.collection("ffcsOfferings").doc(appData.offeringId);
-    const offeringSnap = await offeringRef.get();
+      const appData = appSnap.data() as any;
+      const offeringRef = adminDb.collection("ffcsOfferings").doc(appData.offeringId);
+      const offeringSnap = await transaction.get(offeringRef);
 
-    if (!offeringSnap.exists) {
-      return res.status(404).json({ error: "Offering not found" });
-    }
+      if (!offeringSnap.exists) {
+        throw new Error("Offering not found");
+      }
 
-    const offeringData = offeringSnap.data() as any;
-    if (offeringData.teacherId !== uid) {
-      return res.status(403).json({ error: "You are not authorized to manage this student selection" });
-    }
+      const offeringData = offeringSnap.data() as any;
+      if (offeringData.teacherId !== uid) {
+        throw new Error("FORBIDDEN: You are not authorized to manage this student selection");
+      }
 
-    await appRef.update({ status, updatedAt: new Date().toISOString() });
-
-    let classId: string | null = null;
-
-    if (status === "allocated") {
       const classDocId = `${uid}_${appData.offeringId}`;
       const classRef = adminDb.collection("classes").doc(classDocId);
-      const classSnap = await classRef.get();
+      const classSnap = await transaction.get(classRef);
 
+      let classId: string | null = null;
       if (classSnap.exists) {
-        const classData = classSnap.data() as any;
-        classId = classData.classId;
-        const existingStudents: string[] = classData.studentIds || [];
-        if (!existingStudents.includes(appData.studentId)) {
-          await classRef.update({
-            studentIds: [...existingStudents, appData.studentId],
+        classId = classSnap.data()?.classId || null;
+      }
+
+      if (appData.status === status) {
+        return { success: true, id, status, classId };
+      }
+
+      let newClassId = classId;
+
+      if (status === "allocated") {
+        const capacity = Number(offeringData.capacity ?? 60);
+
+        if (classSnap.exists) {
+          const classData = classSnap.data() as any;
+          newClassId = classData.classId;
+          const currentStudentIds: string[] = classData.studentIds || [];
+          if (!currentStudentIds.includes(appData.studentId)) {
+            if (currentStudentIds.length >= capacity) {
+              throw new Error(`Class capacity reached (${capacity} students max). Cannot accept more students.`);
+            }
+            const updatedStudentIds = [...currentStudentIds, appData.studentId];
+            transaction.update(classRef, {
+              studentIds: updatedStudentIds,
+              studentCount: updatedStudentIds.length,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } else {
+          const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+          newClassId = "CLS-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+          transaction.set(classRef, {
+            classId: newClassId,
+            timetableId: offeringData.id || appData.offeringId,
+            teacherId: uid,
+            subjectId: offeringData.subjectId || appData.subjectId || "",
+            subjectCode: offeringData.subjectCode || offeringData.subjectId || "",
+            subjectName: offeringData.subjectName || "",
+            day: offeringData.day || "",
+            slotId: offeringData.slotId || "",
+            startTime: offeringData.startTime || "",
+            endTime: offeringData.endTime || "",
+            semester: offeringData.semester || appData.semester || 1,
+            studentIds: [appData.studentId],
+            studentCount: 1,
+            status: "active",
+            createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
         }
-      } else {
-        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        classId = "CLS-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-        await classRef.set({
-          classId,
-          teacherId: uid,
-          offeringId: appData.offeringId,
-          subjectId: appData.subjectId || null,
-          studentIds: [appData.studentId],
-          createdAt: new Date().toISOString(),
+
+        transaction.update(offeringRef, {
+          classId: newClassId,
           updatedAt: new Date().toISOString(),
         });
+
+        const studentRef = adminDb.collection("students").doc(appData.studentId);
+        const studentSnap = await transaction.get(studentRef);
+        if (studentSnap.exists && newClassId) {
+          const sData = studentSnap.data();
+          const currentClasses: string[] = sData?.classIds || [];
+          if (!currentClasses.includes(newClassId)) {
+            transaction.update(studentRef, {
+              classIds: [...currentClasses, newClassId],
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+
+        const allocRef = adminDb.collection("ffcsAllocations").doc(`${appData.windowId}_${appData.studentId}_${appData.subjectId}`);
+        transaction.set(allocRef, {
+          id: allocRef.id,
+          windowId: appData.windowId,
+          studentId: appData.studentId,
+          subjectId: appData.subjectId,
+          offeringId: appData.offeringId,
+          classId: newClassId,
+          priorityType: appData.semester === "1" ? "sem1_fcfs" : "sem2_cgpa",
+          cgpaSnapshot: appData.cgpaSnapshot ?? null,
+          allocatedAt: new Date().toISOString(),
+        });
+      } else if (status === "rejected" && appData.status === "allocated") {
+        if (classSnap.exists) {
+          const classData = classSnap.data() as any;
+          const currentStudentIds: string[] = classData.studentIds || [];
+          const updatedStudentIds = currentStudentIds.filter((sid) => sid !== appData.studentId);
+          transaction.update(classRef, {
+            studentIds: updatedStudentIds,
+            studentCount: updatedStudentIds.length,
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
 
-      const allocRef = adminDb.collection("ffcsAllocations").doc(`${appData.windowId}_${appData.studentId}_${appData.subjectId}`);
-      await allocRef.set({
-        id: allocRef.id,
-        windowId: appData.windowId,
-        studentId: appData.studentId,
-        subjectId: appData.subjectId,
-        offeringId: appData.offeringId,
-        classId,
-        priorityType: appData.semester === "1" ? "sem1_fcfs" : "sem2_cgpa",
-        cgpaSnapshot: appData.cgpaSnapshot ?? null,
-        allocatedAt: new Date().toISOString(),
+      transaction.update(appRef, {
+        status,
+        classId: newClassId,
+        updatedAt: new Date().toISOString(),
       });
-    }
 
-    return res.json({ success: true, id, status, classId });
+      return { success: true, id, status, classId: newClassId };
+    });
 
+    return res.json(result);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to update application status";
-    return res.status(500).json({ error: msg });
+    if (msg.startsWith("FORBIDDEN")) {
+      return res.status(403).json({ error: msg.replace("FORBIDDEN: ", "") });
+    }
+    return res.status(400).json({ error: msg });
   }
 });
 
@@ -702,6 +766,92 @@ router.get("/teacher/classes", requireAuth, requireTeacher, async (req: Authenti
     return res.json(classes);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch classes";
+    return res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/teacher/timetable", requireAuth, requireTeacher, async (req: AuthenticatedRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const offeringsSnap = await adminDb.collection("ffcsOfferings").where("teacherId", "==", uid).get();
+    const timetable = offeringsSnap.docs.map((d) => {
+      const data = d.data();
+      return {
+        timetableId: d.id,
+        offeringId: d.id,
+        subjectId: data.subjectId || "",
+        subjectCode: data.subjectCode || data.subjectId || "",
+        subjectName: data.subjectName || "",
+        day: data.day,
+        slotId: data.slotId,
+        startTime: data.startTime || "",
+        endTime: data.endTime || "",
+        classId: data.classId || null,
+        capacity: data.capacity,
+        seatsFilled: data.seatsFilled,
+        semester: data.semester,
+      };
+    });
+
+    return res.json({ timetable });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch teacher timetable";
+    return res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/teacher/classes/:classId/roster", requireAuth, requireTeacher, async (req: AuthenticatedRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({ error: "Unauthorized" });
+
+  const { classId } = req.params;
+
+  try {
+    const classSnap = await adminDb.collection("classes").where("classId", "==", classId).get();
+    if (classSnap.empty) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    const classDoc = classSnap.docs[0];
+    const classData = classDoc.data();
+
+    if (classData.teacherId !== uid) {
+      return res.status(403).json({ error: "You are not authorized to view this class roster" });
+    }
+
+    const studentIds: string[] = classData.studentIds || [];
+    const students: any[] = [];
+
+    for (const sid of studentIds) {
+      const sDoc = await adminDb.collection("students").doc(sid).get();
+      if (sDoc.exists) {
+        const sData = sDoc.data()!;
+        students.push({
+          id: sid,
+          name: sData.name || sData.fullName || "Student",
+          email: sData.email || "",
+          enrollmentNumber: sData.enrollmentNumber || sData.enrollmentNo || sid,
+          department: sData.department || "",
+          batch: sData.batch || "",
+        });
+      } else {
+        students.push({
+          id: sid,
+          name: sid,
+          email: "",
+          enrollmentNumber: sid,
+        });
+      }
+    }
+
+    return res.json({
+      class: { id: classDoc.id, ...classData },
+      students,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch class roster";
     return res.status(500).json({ error: msg });
   }
 });

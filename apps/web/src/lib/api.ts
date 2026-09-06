@@ -322,7 +322,7 @@ export async function fetchAnnouncements(): Promise<Announcement[]> {
         }
       });
     }
-  } catch {}
+  } catch { }
 
   return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 }
@@ -382,7 +382,7 @@ export async function createAnnouncement(payload: {
     const raw = localStorage.getItem("vibhaag-custom-announcements");
     const existing = raw ? JSON.parse(raw) : [];
     localStorage.setItem("vibhaag-custom-announcements", JSON.stringify([newAnnouncement, ...existing]));
-  } catch {}
+  } catch { }
 
   return newAnnouncement;
 }
@@ -412,7 +412,7 @@ export async function deleteAnnouncement(id: string): Promise<void> {
       const filtered = existing.filter((item) => (item._id || item.id) !== id);
       localStorage.setItem("vibhaag-custom-announcements", JSON.stringify(filtered));
     }
-  } catch {}
+  } catch { }
 }
 
 export async function fetchStudentSchedule() {
@@ -1094,6 +1094,24 @@ import {
   deleteFileFromIndexedDB,
 } from "./idb";
 
+export type TeacherClass = {
+  id: string;
+  classId: string;
+  teacherId: string;
+  offeringId: string;
+  subjectId?: string | null;
+  subjectCode?: string;
+  subjectName?: string;
+  day?: string;
+  slotId?: string;
+  startTime?: string;
+  endTime?: string;
+  studentIds: string[];
+  studentCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LibraryMaterial = {
   _id?: string;
   id: string;
@@ -1103,6 +1121,7 @@ export type LibraryMaterial = {
   course: string;
   description: string;
   genre?: string;
+  classId?: string;
   uploadedBy: string;
   uploadedByRole: string;
   fileUrl: string;
@@ -1180,6 +1199,7 @@ export async function createLibraryMaterial(payload: {
   course: string;
   description: string;
   genre?: string;
+  classId?: string;
   file: File;
   uploadedBy: string;
   uploadedByRole: string;
@@ -1198,6 +1218,7 @@ export async function createLibraryMaterial(payload: {
     course: payload.course,
     description: payload.description || "",
     genre: payload.genre || "Computer Science",
+    ...(payload.classId ? { classId: payload.classId } : {}),
     uploadedBy: payload.uploadedBy || "Faculty",
     uploadedByRole: payload.uploadedByRole || "faculty",
     fileUrl: localUrl,
@@ -1218,7 +1239,7 @@ export async function createLibraryMaterial(payload: {
     const raw = localStorage.getItem("vibhaag-custom-library-materials");
     const existing = raw ? JSON.parse(raw) : [];
     localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify([newMaterial, ...existing]));
-  } catch {}
+  } catch { }
 
   (async () => {
     try {
@@ -1294,7 +1315,7 @@ export async function createLibraryMaterial(payload: {
             );
             localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(updated));
           }
-        } catch {}
+        } catch { }
       }
     } catch (bgErr) {
       console.warn("Background cloud upload notice:", bgErr);
@@ -1587,22 +1608,66 @@ export async function updateTeacherFfcsApplicationStatus(id: string, status: "al
   return data;
 }
 
-export type TeacherClass = {
-  id: string;
-  className: string;
-  courseCode: string;
-  department: string;
-};
-
 export async function fetchTeacherClasses(): Promise<TeacherClass[]> {
+  const authHeader = await getAuthHeader();
   try {
-    const snap = await getDocs(collection(db, "teacher-classes"));
-    if (!snap.empty) {
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as TeacherClass[];
-    }
-  } catch (err) {
-    console.warn("Firestore fetch teacher classes notice:", err);
+    const res = await fetch(`${API_BASE}/teacher/classes`, {
+      headers: { ...authHeader },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to fetch classes");
+    return data as TeacherClass[];
+  } catch {
+    return [];
   }
-  return [];
+}
+
+export interface TeacherTimetableSlotItem {
+  timetableId: string;
+  offeringId: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  day: string;
+  slotId: string;
+  startTime: string;
+  endTime: string;
+  classId: string | null;
+  capacity?: number;
+  seatsFilled?: number;
+  semester?: string | number;
+}
+
+export async function fetchTeacherTimetable(): Promise<TeacherTimetableSlotItem[]> {
+  const authHeader = await getAuthHeader();
+  try {
+    const res = await fetch(`${API_BASE}/teacher/timetable`, {
+      headers: { ...authHeader },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to fetch teacher timetable");
+    return (data.timetable || []) as TeacherTimetableSlotItem[];
+  } catch {
+    return [];
+  }
+}
+
+export interface ClassRosterStudent {
+  id: string;
+  name: string;
+  email: string;
+  enrollmentNumber: string;
+  department?: string;
+  batch?: string;
+}
+
+export async function fetchClassRoster(classId: string): Promise<{ class: any; students: ClassRosterStudent[] }> {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE}/teacher/classes/${encodeURIComponent(classId)}/roster`, {
+    headers: { ...authHeader },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to fetch class roster");
+  return data;
 }
 

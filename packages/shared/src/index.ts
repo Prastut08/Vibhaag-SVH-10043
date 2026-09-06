@@ -139,6 +139,7 @@ export const FFCSOfferingSchema = z.object({
   windowId: z.string(),
   semester: z.union([z.number(), z.string()]),
   subjectId: z.string(),
+  subjectCode: z.string().optional(),
   subjectName: z.string(),
   teacherId: z.string(),
   teacherName: z.string(),
@@ -188,5 +189,39 @@ export const FFCSAllocationSchema = z.object({
   allocatedAt: z.string(),
 });
 export type FFCSAllocation = z.infer<typeof FFCSAllocationSchema>;
+
+export interface TeacherTimetableSlot {
+  timetableId: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  day: string;
+  slotId: string;
+  startTime: string;
+  endTime: string;
+  classId?: string;
+  capacity?: number;
+  seatsFilled?: number;
+  semester?: string | number;
+  section?: string;
+}
+
+export interface ClassModel {
+  classId: string;
+  offeringId: string;
+  teacherId: string;
+  subjectId: string;
+  subjectCode?: string;
+  subjectName?: string;
+  day?: string;
+  slotId?: string;
+  startTime?: string;
+  endTime?: string;
+  studentIds: string[];
+  studentCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 
 
