@@ -216,7 +216,7 @@ function MainApp() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <div className="brand-icon">V</div>
+              <div className="brand-icon"><img src="/logo.png" alt="Vibhaag" /></div>
               <div>
                 <h1 className="brand-title">Vibhaag</h1>
                 <p className="user-role-text">{user.name} (Student)</p>
@@ -272,7 +272,7 @@ function MainApp() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <div className="brand-icon">V</div>
+              <div className="brand-icon"><img src="/logo.png" alt="Vibhaag" /></div>
               <div>
                 <h1 className="brand-title">Vibhaag</h1>
                 <p className="user-role-text">{user.name} (Teacher)</p>
@@ -329,7 +329,7 @@ function MainApp() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <div className="brand-icon">V</div>
+              <div className="brand-icon"><img src="/logo.png" alt="Vibhaag" /></div>
               <div>
                 <h1 className="brand-title">Vibhaag</h1>
                 <p className="user-role-text">{user.name} (Admin)</p>
