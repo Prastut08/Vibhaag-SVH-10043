@@ -640,7 +640,37 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
 
     await appRef.update({ status, updatedAt: new Date().toISOString() });
 
+    let classId: string | null = null;
+
     if (status === "allocated") {
+      const classDocId = `${uid}_${appData.offeringId}`;
+      const classRef = adminDb.collection("classes").doc(classDocId);
+      const classSnap = await classRef.get();
+
+      if (classSnap.exists) {
+        const classData = classSnap.data() as any;
+        classId = classData.classId;
+        const existingStudents: string[] = classData.studentIds || [];
+        if (!existingStudents.includes(appData.studentId)) {
+          await classRef.update({
+            studentIds: [...existingStudents, appData.studentId],
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } else {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        classId = "CLS-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+        await classRef.set({
+          classId,
+          teacherId: uid,
+          offeringId: appData.offeringId,
+          subjectId: appData.subjectId || null,
+          studentIds: [appData.studentId],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
       const allocRef = adminDb.collection("ffcsAllocations").doc(`${appData.windowId}_${appData.studentId}_${appData.subjectId}`);
       await allocRef.set({
         id: allocRef.id,
@@ -648,17 +678,33 @@ router.patch("/teacher/ffcs/applications/:id/status", requireAuth, requireTeache
         studentId: appData.studentId,
         subjectId: appData.subjectId,
         offeringId: appData.offeringId,
+        classId,
         priorityType: appData.semester === "1" ? "sem1_fcfs" : "sem2_cgpa",
         cgpaSnapshot: appData.cgpaSnapshot ?? null,
         allocatedAt: new Date().toISOString(),
       });
     }
 
-    return res.json({ success: true, id, status });
+    return res.json({ success: true, id, status, classId });
+
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to update application status";
     return res.status(500).json({ error: msg });
   }
 });
 
+router.get("/teacher/classes", requireAuth, requireTeacher, async (req: AuthenticatedRequest, res: Response) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const snap = await adminDb.collection("classes").where("teacherId", "==", uid).get();
+    const classes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return res.json(classes);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch classes";
+    return res.status(500).json({ error: msg });
+  }
+});
+
 export default router;
+

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, Download, FileText, Filter, Image as ImageIcon, Plus, Search, Trash2, UploadCloud } from "lucide-react";
-import { createLibraryMaterial, deleteLibraryMaterial, fetchLibraryMaterials, LibraryMaterial } from "../lib/api";
+import { createLibraryMaterial, deleteLibraryMaterial, fetchLibraryMaterials, fetchTeacherClasses, LibraryMaterial, TeacherClass } from "../lib/api";
 
 type Props = {
   userRole?: string;
@@ -13,6 +13,8 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("All");
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>("All");
+  const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
 
   // Form State
   const [title, setTitle] = useState("");
@@ -20,6 +22,7 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
   const [department, setDepartment] = useState("Computer Science");
   const [course, setCourse] = useState("CS201 - Data Structures");
   const [description, setDescription] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -41,6 +44,12 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
     };
 
     loadData();
+
+    if (userRole === "faculty" || userRole === "teacher" || userRole === "admin") {
+      fetchTeacherClasses().then((classes) => {
+        if (isMounted) setTeacherClasses(classes);
+      }).catch(() => {});
+    }
 
     window.addEventListener("storage", loadData);
     window.addEventListener("focus", loadData);
@@ -79,7 +88,7 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
     }
     setUploading(true);
     setUploadError(null);
-    setUploadStatus("Uploading file to Cloudinary...");
+    setUploadStatus("Uploading file...");
 
     try {
       const newMaterial = await createLibraryMaterial({
@@ -88,22 +97,24 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
         department,
         course,
         description,
+        classId: selectedClassId || undefined,
         file,
         uploadedBy: userName,
         uploadedByRole: userRole,
       });
 
       setMaterials((prev) => [newMaterial, ...prev]);
-      setUploadStatus("Successfully uploaded and saved to Firestore!");
+      setUploadStatus("Successfully uploaded and saved!");
       setTimeout(() => {
         setShowUploadModal(false);
         setUploadStatus(null);
         setTitle("");
         setDescription("");
         setFile(null);
+        setSelectedClassId("");
       }, 1200);
     } catch (err: any) {
-      setUploadError(err?.message || "Failed to upload file to Cloudinary & Firestore");
+      setUploadError(err?.message || "Failed to upload file");
     } finally {
       setUploading(false);
     }
@@ -119,9 +130,10 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
         course.toLowerCase().includes(searchQuery.toLowerCase()) ||
         uploadedBy.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = selectedType === "All" || item.resourceType === selectedType;
-      return matchesSearch && matchesType;
+      const matchesClass = selectedClassFilter === "All" || item.classId === selectedClassFilter;
+      return matchesSearch && matchesType && matchesClass;
     });
-  }, [materials, searchQuery, selectedType]);
+  }, [materials, searchQuery, selectedType, selectedClassFilter]);
 
   const stats = useMemo(() => {
     const notesCount = materials.filter((m) => m.resourceType === "Notes" || m.resourceType === "Slides").length;
@@ -287,6 +299,20 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
                 />
               </label>
 
+              {teacherClasses.length > 0 && (
+                <label className="input">
+                  Assign to Class (optional)
+                  <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)}>
+                    <option value="">🌐 Global — All Students</option>
+                    {teacherClasses.map((cls) => (
+                      <option key={cls.classId} value={cls.classId}>
+                        🏫 {cls.classId} ({cls.studentIds.length} student{cls.studentIds.length !== 1 ? "s" : ""})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               {/* File Input */}
               <div
                 style={{
@@ -378,6 +404,18 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
                 {type}
               </button>
             ))}
+            {teacherClasses.length > 0 && (
+              <select
+                value={selectedClassFilter}
+                onChange={(e) => setSelectedClassFilter(e.target.value)}
+                style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
+              >
+                <option value="All">All Classes</option>
+                {teacherClasses.map((cls) => (
+                  <option key={cls.classId} value={cls.classId}>{cls.classId}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </section>
@@ -426,9 +464,17 @@ export default function LibraryPage({ userRole = "faculty", userName = "Faculty 
                       {item.title}
                     </h3>
 
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#2563eb", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#2563eb", marginBottom: item.classId ? "4px" : "8px" }}>
                       {item.course} • {item.department}
                     </div>
+
+                    {item.classId && (
+                      <div style={{ marginBottom: "8px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, background: "#EEF2FF", color: "#3730A3", padding: "2px 8px", borderRadius: "6px", fontFamily: "monospace" }}>
+                          🏫 {item.classId}
+                        </span>
+                      </div>
+                    )}
 
                     <p style={{ fontSize: "13px", color: "#4b5563", marginBottom: "14px", lineHeight: 1.5 }}>
                       {item.description}
