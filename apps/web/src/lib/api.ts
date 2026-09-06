@@ -7,6 +7,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+
   query,
   where,
   serverTimestamp,
@@ -32,12 +33,26 @@ const getApiBaseUrl = (): string => {
     return `https://${envUrl}`;
   }
   if (typeof window !== "undefined" && window.location && window.location.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:4000`;
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return `${window.location.protocol}//${window.location.hostname}:4000`;
+    }
   }
   return "http://localhost:4000";
 };
 
 export const API_BASE = getApiBaseUrl();
+
+async function safeParseJsonResponse(res: Response): Promise<any> {
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("Unable to connect to backend server. HTML response returned.");
+  }
+  try {
+    return await res.json();
+  } catch {
+    throw new Error("Unable to connect to backend server. Invalid JSON response.");
+  }
+}
 
 // Role-based Firestore user authentication & collection storage
 export async function loginRoleBased(email: string, password: string, userType: "student" | "faculty" | "admin") {
@@ -164,7 +179,7 @@ export async function fetchMe() {
     },
   });
 
-  const data = await res.json();
+  const data = await safeParseJsonResponse(res);
   if (!res.ok) {
     throw new Error(data.error || "Failed to verify Campus Hub user profile");
   }
@@ -190,14 +205,20 @@ export async function verifyPortalLogin(expectedRole: "admin" | "student" | "tea
       body: JSON.stringify({ expectedRole, identifier }),
     });
 
-    const data = await res.json();
+    const data = await safeParseJsonResponse(res);
     if (!res.ok) {
       throw new Error(data.error || "Authentication failed");
     }
 
     return data;
   } catch (err: any) {
-    if (err.name === "TypeError" || err.message?.includes("fetch") || err.message?.includes("Failed to fetch")) {
+    if (
+      err.name === "TypeError" ||
+      err.message?.includes("fetch") ||
+      err.message?.includes("Failed to fetch") ||
+      err.message?.includes("HTML response") ||
+      err.message?.includes("Invalid JSON")
+    ) {
       throw new Error("Unable to connect to the server. Please try again.");
     }
     throw err;
@@ -1068,7 +1089,7 @@ export async function createLibraryMaterial(payload: {
     const raw = localStorage.getItem("vibhaag-custom-library-materials");
     const existing = raw ? JSON.parse(raw) : [];
     localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify([newMaterial, ...existing]));
-  } catch {}
+  } catch { }
 
   (async () => {
     try {
@@ -1144,7 +1165,7 @@ export async function createLibraryMaterial(payload: {
             );
             localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(updated));
           }
-        } catch {}
+        } catch { }
       }
     } catch (bgErr) {
       console.warn("Background cloud upload notice:", bgErr);
@@ -1168,7 +1189,7 @@ export async function deleteLibraryMaterial(id: string): Promise<void> {
       const filtered = stored.filter((item: LibraryMaterial) => (item._id || item.id) !== id);
       localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(filtered));
     }
-  } catch {}
+  } catch { }
 
   try {
     const dbReq = indexedDB.open("vibhaag-library-files", 1);
@@ -1179,7 +1200,7 @@ export async function deleteLibraryMaterial(id: string): Promise<void> {
         tx.objectStore("files").delete(id);
       }
     };
-  } catch {}
+  } catch { }
 }
 
 export async function fetchAdminFfcsWindows() {
