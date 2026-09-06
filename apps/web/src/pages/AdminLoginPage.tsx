@@ -105,6 +105,7 @@ export default function AdminLoginPage({ onAuthSuccess }: AdminLoginPageProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
             />
           </label>
 

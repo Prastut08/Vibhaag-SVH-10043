@@ -6,6 +6,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   serverTimestamp,
@@ -24,7 +25,12 @@ import type { AuthResponse } from "@vibhaag/shared";
 // ----------------------------------------------------
 const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) return envUrl;
+  if (envUrl) {
+    if (envUrl.startsWith("http://") || envUrl.startsWith("https://")) {
+      return envUrl;
+    }
+    return `https://${envUrl}`;
+  }
   if (typeof window !== "undefined" && window.location && window.location.hostname) {
     return `${window.location.protocol}//${window.location.hostname}:4000`;
   }
@@ -924,6 +930,17 @@ import {
   deleteFileFromIndexedDB,
 } from "./idb";
 
+export type TeacherClass = {
+  id: string;
+  classId: string;
+  teacherId: string;
+  offeringId: string;
+  subjectId?: string | null;
+  studentIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LibraryMaterial = {
   _id?: string;
   id: string;
@@ -933,6 +950,7 @@ export type LibraryMaterial = {
   course: string;
   description: string;
   genre?: string;
+  classId?: string;
   uploadedBy: string;
   uploadedByRole: string;
   fileUrl: string;
@@ -1010,6 +1028,7 @@ export async function createLibraryMaterial(payload: {
   course: string;
   description: string;
   genre?: string;
+  classId?: string;
   file: File;
   uploadedBy: string;
   uploadedByRole: string;
@@ -1028,6 +1047,7 @@ export async function createLibraryMaterial(payload: {
     course: payload.course,
     description: payload.description || "",
     genre: payload.genre || "Computer Science",
+    ...(payload.classId ? { classId: payload.classId } : {}),
     uploadedBy: payload.uploadedBy || "Faculty",
     uploadedByRole: payload.uploadedByRole || "faculty",
     fileUrl: localUrl,
@@ -1132,6 +1152,34 @@ export async function createLibraryMaterial(payload: {
   })();
 
   return newMaterial;
+}
+
+export async function deleteLibraryMaterial(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, "library-materials", id));
+  } catch (err) {
+    console.warn("Firestore deleteDoc notice:", err);
+  }
+
+  try {
+    const raw = localStorage.getItem("vibhaag-custom-library-materials");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      const filtered = stored.filter((item: LibraryMaterial) => (item._id || item.id) !== id);
+      localStorage.setItem("vibhaag-custom-library-materials", JSON.stringify(filtered));
+    }
+  } catch {}
+
+  try {
+    const dbReq = indexedDB.open("vibhaag-library-files", 1);
+    dbReq.onsuccess = () => {
+      const idb = dbReq.result;
+      if (idb.objectStoreNames.contains("files")) {
+        const tx = idb.transaction("files", "readwrite");
+        tx.objectStore("files").delete(id);
+      }
+    };
+  } catch {}
 }
 
 export async function fetchAdminFfcsWindows() {
@@ -1391,6 +1439,19 @@ export async function updateTeacherFfcsApplicationStatus(id: string, status: "al
   if (!res.ok) {
     throw new Error(data.error || "Failed to update application status");
   }
-  return data;
+  return data as { success: boolean; id: string; status: string; classId: string | null };
 }
 
+export async function fetchTeacherClasses(): Promise<TeacherClass[]> {
+  const authHeader = await getAuthHeader();
+  try {
+    const res = await fetch(`${API_BASE}/teacher/classes`, {
+      headers: { ...authHeader },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to fetch classes");
+    return data as TeacherClass[];
+  } catch {
+    return [];
+  }
+}
